@@ -1,0 +1,43 @@
+# ===========================================
+# VieScanner - Root .gitignore
+# ===========================================
+# Các file/folder chung cho cả frontend & backend.
+# Frontend (Next.js) và backend (FastAPI) có .gitignore riêng cho stack-specific.
+
+# ----- OS -----
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+ehthumbs.db
+*.lnk
+
+# ----- IDE / Editor -----
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+.history/
+
+# ----- Logs -----
+*.log
+logs/
+
+# ----- Env / Secrets -----
+# Mỗi sub-project quản lý .env riêng; vẫn chặn ở root để chắc chắn không leak.
+.env
+.env.*
+!.env.example
+
+# ----- Temp / Build artifacts chung -----
+*.tmp
+*.bak
+*.orig
+*.rej
+
+# ----- Test coverage chung (nếu chạy ở root) -----
+coverage/
+.coverage
+htmlcov/

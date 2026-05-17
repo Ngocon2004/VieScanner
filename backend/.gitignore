@@ -1,0 +1,84 @@
+# ===========================================
+# VieScanner Backend - .gitignore
+# ===========================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+viescanner.db
+
+# OCR weights / data
+# Giữ thư mục weights/ (có .gitkeep) nhưng ignore tất cả weights bên trong.
+weights/*
+!weights/.gitkeep
+*.pt
+*.pth
+*.onnx
+data/
+uploads/
+output/
+
+# Debug images (khi OCR_DEBUG_SAVE=true)
+debug_images/
+
+# Local tuning/eval artifacts (Phase 2.7) - có thể chứa PII từ ảnh thật.
+scripts/eval_results*.json
+scripts/tune_results*.json
+scripts/failed_images*.txt
+scripts/ground_truth*.json
+
+# Local CCCD evaluation fixtures (Phase 2.7) - never commit real PII samples.
+tests/fixtures/cccd_samples/*
+!tests/fixtures/cccd_samples/.gitkeep
+!tests/fixtures/cccd_samples/README.md
+!tests/fixtures/cccd_samples/ground_truth.template.json
+
+# OS
+Thumbs.db
