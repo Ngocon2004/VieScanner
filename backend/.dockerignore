@@ -1,0 +1,12 @@
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+viescanner.db
+debug_images/
+weights/
+scripts/eval_results*.json
+scripts/tune_results*.json
+scripts/ground_truth*.json
