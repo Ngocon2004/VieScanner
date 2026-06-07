@@ -47,7 +47,7 @@ Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_RO
 | **Sprint FE-Int** | Frontend History & Records UI integration | ✅ Done |
 | **Documentation** | README final, screenshots | ⏳ In progress (còn 2 screenshot phụ; video/slide đã bỏ scope) |
 | **Quality Gate + Batch** | Lọc chất lượng ảnh (cứng/mềm) + xử lý nhiều ảnh + báo lý do ảnh không đạt | ✅ Core done (Session 19) — follow-up: Sprint P |
-| **Backlog Tối ưu** | Đề xuất cải tiến accuracy/perf/UX/security (Sprint L–O) | ⏳ Đề xuất (Session 18) |
+| **Backlog Tối ưu** | Đề xuất cải tiến accuracy/perf/UX/security (Sprint L–O) | ⏳ Đang làm — L1 (QR), N5, P5 ✅ Done (Session 20); còn M/N/O |
 
 \* Cho đồ án chỉ làm subset.
 
@@ -544,7 +544,7 @@ Các quyết định bạn cần làm khi đến từng Sprint:
 
 ---
 
-**Last updated**: Session 20 (commit toàn bộ work tồn đọng + chốt ignore artifact).
+**Last updated**: Session 20 (commit work tồn đọng + sửa lint P5 + đọc QR mặt trước CCCD L1).
 - Git: gom toàn bộ thay đổi chưa commit thành **9 commit logic** (conventional commits) theo nhóm tính năng:
   - `chore(repo)`: ignore artifact local (e2e db, tuning json).
   - `feat(backend)` + `test(backend)`: Quality Gate + `/api/extract-batch` + OCR result cache + test.
@@ -555,10 +555,11 @@ Các quyết định bạn cần làm khi đến từng Sprint:
   - `docs`: sync roadmaps/README/troubleshooting + screenshots.
 - `.gitignore`: thêm `*.db` (frontend) + mở rộng `scripts/tune_*.json` (backend) → loại `frontend/viescanner-e2e.db` và `backend/scripts/tune_test_run.json` (artifact từ ảnh thật, tránh lộ PII) khỏi git.
 - Verify trạng thái đã commit: `git status` sạch; backend `pytest -q` -> **37 passed**; frontend `npm test` -> **12 passed**.
-- Chưa push: nhánh `main` đang ahead `origin/main` 9 commit.
+- Chưa push toàn bộ Session 20: nhánh `main` đang ahead `origin/main` (xem `git log`).
 - Mục **N5** (commit các file FE chưa track) -> ✅ Done.
 - Mục **P5** (lint react-hooks) -> ✅ Done: `npm run lint` đã **sạch** (3 errors + 2 warnings cũ đã xử lý — `useCallback` + khai báo trước effect, dọn unused vars, và `eslint-disable` có giải trình cho fetch-on-mount). Fix triệt để = N4 (chuyển sang SWR/React Query). Re-verify: `npm test` -> **12 passed**.
 - **L1 (TOP 1 backlog) — Đọc QR mặt trước CCCD**: thêm `app/services/ocr/qr.py` (cv2.QRCodeDetector, không thêm dependency) + tích hợp vào `pipeline.py` (QR override 5 trường với confidence 1.0; OCR lo `nationality/origin/expiry` + fallback; QR-only khi OCR fail). Config `OCR_QR_ENABLED` (default on), chạy cả mock lẫn real. Backend `pytest -q` -> **54 passed** (+17 test QR); verify decode QR thật bằng cv2 end-to-end OK. Docs: `docs/OCR_PIPELINE.md` mục "QR Fast-Path".
+- ⏭️ **Lần sau làm tiếp** (theo ROI): **M1 + M2** — `asyncio.Semaphore` giới hạn OCR đồng thời (env `OCR_MAX_CONCURRENCY`) + warm-up models trong `lifespan` (`main.py`) khi `OCR_ENGINE=real`; sau đó **L2** (batch VietOCR giảm latency). Việc tồn đọng: push các commit Session 20 lên remote.
 
 **Session 19**: triển khai Quality Gate + Batch xử lý nhiều ảnh.
 - Backend: thêm cổng kiểm tra chất lượng ảnh trước OCR (`app/services/image_quality.py`) — độ phân giải, độ nét (Laplacian), độ sáng/lóa, và "có phải thẻ CCCD" (YOLO, real mode). Ngưỡng cứng (chặn) + mềm (cảnh báo) cấu hình qua `QUALITY_*`.
