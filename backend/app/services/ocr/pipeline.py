@@ -23,10 +23,12 @@ from app.services.ocr.interfaces import (
     Aligner,
     Cleaner,
     Detector,
+    ExtractionResult,
     Extractor,
     OCRStageError,
     Recognizer,
 )
+from app.services.ocr.qr import CCCDQRData, read_cccd_qr
 
 if TYPE_CHECKING:
     import numpy as np
@@ -135,29 +137,67 @@ class OCRPipeline:
                 getattr(image, "shape", None),
             )
 
-            t0 = perf_counter()
-            aligned = self._aligner.align(image)
-            stage_ms["align"] = (perf_counter() - t0) * 1000
+            # Đọc QR mặt trước (CCCD gắn chip) trước khi OCR. Engine-agnostic,
+            # chỉ dùng OpenCV nên hoạt động cả ở mock lẫn real engine.
+            qr_data: CCCDQRData | None = None
+            if settings.ocr_qr_enabled:
+                t0 = perf_counter()
+                qr_data = read_cccd_qr(image)
+                stage_ms["qr"] = (perf_counter() - t0) * 1000
+                if qr_data is not None:
+                    logger.info(
+                        "QR CCCD detected | id_number={} | fields={}",
+                        qr_data.id_number,
+                        sorted(qr_data.to_field_overrides()),
+                    )
 
-            t0 = perf_counter()
-            cleaned = self._cleaner.clean(aligned)
-            stage_ms["clean"] = (perf_counter() - t0) * 1000
+            # Khởi tạo mặc định để trace/debug-save dùng được kể cả khi OCR fail.
+            aligned = image
+            cleaned = image
+            boxes = []
+            lines = []
 
-            t0 = perf_counter()
-            boxes = self._detector.detect(cleaned)
-            stage_ms["detect"] = (perf_counter() - t0) * 1000
+            try:
+                t0 = perf_counter()
+                aligned = self._aligner.align(image)
+                stage_ms["align"] = (perf_counter() - t0) * 1000
 
-            if not boxes:
-                logger.warning("Detector trả về 0 box.")
-                raise OCRFailedError("Không phát hiện được vùng văn bản nào.")
+                t0 = perf_counter()
+                cleaned = self._cleaner.clean(aligned)
+                stage_ms["clean"] = (perf_counter() - t0) * 1000
 
-            t0 = perf_counter()
-            lines = self._recognizer.recognize(cleaned, boxes)
-            stage_ms["recognize"] = (perf_counter() - t0) * 1000
+                t0 = perf_counter()
+                boxes = self._detector.detect(cleaned)
+                stage_ms["detect"] = (perf_counter() - t0) * 1000
 
-            t0 = perf_counter()
-            result = self._extractor.extract(lines)
-            stage_ms["extract"] = (perf_counter() - t0) * 1000
+                if not boxes:
+                    logger.warning("Detector trả về 0 box.")
+                    raise OCRFailedError("Không phát hiện được vùng văn bản nào.")
+
+                t0 = perf_counter()
+                lines = self._recognizer.recognize(cleaned, boxes)
+                stage_ms["recognize"] = (perf_counter() - t0) * 1000
+
+                t0 = perf_counter()
+                result = self._extractor.extract(lines)
+                stage_ms["extract"] = (perf_counter() - t0) * 1000
+            except (OCRStageError, OCRFailedError):
+                # Không đọc được QR -> để lỗi OCR propagate như cũ.
+                if qr_data is None:
+                    raise
+                # Có QR -> QR là nguồn chính: trả dữ liệu QR-only, các trường QR
+                # không cung cấp để placeholder (confidence 0) cho user rà soát.
+                logger.warning("OCR thất bại nhưng đọc được QR -> trả dữ liệu QR-only.")
+                result = ExtractionResult(fields=qr_data.to_full_fields(), confidences={})
+
+            # QR (nếu có) ghi đè các trường nó cung cấp với confidence tuyệt đối;
+            # các trường QR không có (quốc tịch, quê quán, hạn) giữ nguyên từ OCR.
+            if qr_data is not None:
+                overrides = qr_data.to_field_overrides()
+                result.fields.update(overrides)
+                for field_name in overrides:
+                    result.confidences[field_name] = 1.0
+                logger.info("QR overrides applied to OCR result: {}", sorted(overrides))
 
             try:
                 cccd = CCCDData(**result.fields)

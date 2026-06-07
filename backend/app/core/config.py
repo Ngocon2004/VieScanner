@@ -52,6 +52,10 @@ class Settings(BaseSettings):
     ocr_max_image_side_px: int = 2000
     ocr_result_cache_enabled: bool = True
     ocr_result_cache_ttl_seconds: int = 86400
+    # Đọc QR mặt trước CCCD gắn chip (2021+) -> độ chính xác gần tuyệt đối cho
+    # các trường QR cung cấp (số CCCD, họ tên, ngày sinh, giới tính, nơi thường
+    # trú). OCR vẫn chạy để bù trường QR không có + làm fallback khi không có QR.
+    ocr_qr_enabled: bool = True
 
     # ----- Image quality gate (pre-OCR) -----
     # Cổng kiểm tra chất lượng ảnh trước OCR. Ngưỡng "hard" => chặn (không OCR);
