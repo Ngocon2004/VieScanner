@@ -420,7 +420,7 @@ Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_RO
 - ⏳ **N2. Nén ảnh trong Web Worker / OffscreenCanvas**: `prepareImageForUpload` chạy Canvas trên main thread → giật UI với ảnh lớn.
 - ⏳ **N3. Pagination + search** cho History/Records (BE đã hỗ trợ `limit/offset`, FE mới load 50 dòng).
 - ⏳ **N4. SWR/React Query** cache cho History/Records (đỡ fetch lại mỗi lần vào trang).
-- ⏳ **N5. Commit các file FE chưa track**: `login/register/history/records`, `AuthContext`, `Navbar`, thư mục `e2e/` đã có trên disk nhưng chưa commit git (để khớp "Sprint FE-Int Done").
+- ✅ **N5. Commit các file FE chưa track**: `login/register/history/records`, `AuthContext`, `Navbar`, thư mục `e2e/` — đã commit ở Session 20 (khớp "Sprint FE-Int Done").
 
 **Impact**: N1/N3 TB–cao | **Effort**: thấp–TB.
 
@@ -459,7 +459,7 @@ Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_RO
   - BE: quality gate ở real mode / card-presence (hiện mới test OpenCV metrics + batch mock).
   - FE: unit test cho `lib/quality.ts` (precheck) và `useBatchExtract` (gộp client-reject + server-result, race).
 - ⏳ **P4. Tài liệu**: thêm mục `POST /api/extract-batch` + bảng tiêu chí chất lượng vào `backend/README.md` & `frontend/README.md` (API contract mới: response `{ data, confidences, quality }`).
-- ⏳ **P5. (Liên quan, không bắt buộc)** Sửa lint react-hooks **có sẵn** ở 3 file CHƯA commit (không thuộc tính năng này): `src/app/AuthContext.tsx` (`set-state-in-effect`), `src/app/history/page.tsx` & `src/app/records/page.tsx` (`accessed before declared` → bọc `useCallback`/khai báo trước effect) + dọn unused vars. Trùng mục N5 (commit các file FE chưa track).
+- ⏳ **P5. (Liên quan, không bắt buộc)** Sửa lint react-hooks **có sẵn** ở 3 file (đã commit ở Session 20, không thuộc tính năng này): `src/app/AuthContext.tsx` (`set-state-in-effect`), `src/app/history/page.tsx` & `src/app/records/page.tsx` (`accessed before declared` → bọc `useCallback`/khai báo trước effect) + dọn unused vars. Trùng mục N5 (commit các file FE chưa track).
 
 **Definition of Done**: `npm run test:e2e` xanh với luồng batch; ngưỡng `QUALITY_*` chốt theo ảnh thật; test BE/FE bổ sung pass; README mô tả endpoint batch.
 
@@ -544,7 +544,21 @@ Các quyết định bạn cần làm khi đến từng Sprint:
 
 ---
 
-**Last updated**: Session 19 (triển khai Quality Gate + Batch xử lý nhiều ảnh).
+**Last updated**: Session 20 (commit toàn bộ work tồn đọng + chốt ignore artifact).
+- Git: gom toàn bộ thay đổi chưa commit thành **9 commit logic** (conventional commits) theo nhóm tính năng:
+  - `chore(repo)`: ignore artifact local (e2e db, tuning json).
+  - `feat(backend)` + `test(backend)`: Quality Gate + `/api/extract-batch` + OCR result cache + test.
+  - `feat(frontend)` x2: auth + history/records UI; batch upload + tiền kiểm chất lượng + nén ảnh.
+  - `chore(frontend)`: standalone output + bundle analyzer + deps e2e.
+  - `build(docker)`: dockerize BE + FE + nginx.
+  - `test(e2e)`: Playwright suite.
+  - `docs`: sync roadmaps/README/troubleshooting + screenshots.
+- `.gitignore`: thêm `*.db` (frontend) + mở rộng `scripts/tune_*.json` (backend) → loại `frontend/viescanner-e2e.db` và `backend/scripts/tune_test_run.json` (artifact từ ảnh thật, tránh lộ PII) khỏi git.
+- Verify trạng thái đã commit: `git status` sạch; backend `pytest -q` -> **37 passed**; frontend `npm test` -> **12 passed**.
+- Chưa push: nhánh `main` đang ahead `origin/main` 9 commit.
+- Mục **N5** (commit các file FE chưa track) -> ✅ Done. Lint **P5 vẫn còn**: `npm run lint` báo **3 errors + 2 warnings** ở `AuthContext.tsx`, `history/page.tsx`, `records/page.tsx` (chưa sửa).
+
+**Session 19**: triển khai Quality Gate + Batch xử lý nhiều ảnh.
 - Backend: thêm cổng kiểm tra chất lượng ảnh trước OCR (`app/services/image_quality.py`) — độ phân giải, độ nét (Laplacian), độ sáng/lóa, và "có phải thẻ CCCD" (YOLO, real mode). Ngưỡng cứng (chặn) + mềm (cảnh báo) cấu hình qua `QUALITY_*`.
 - Backend: endpoint mới `POST /api/extract-batch` (nhiều ảnh) + gắn quality gate vào `/api/extract`; `ImageQualityError` (code `image_quality_low`) trả `details` = danh sách lý do. Schemas: `app/models/quality.py`, `BatchItemResult`/`BatchExtractResponse`.
 - Frontend: upload nhiều ảnh, tiền kiểm phía client (`src/lib/quality.ts`), hook `useBatchExtract`, panel kết quả `BatchResultPanel` (đạt/cần xem lại + lý do), `api.ts` thêm `extractBatch` + `fetchWithTimeout` (AbortController — đồng thời xử lý mục N1 của backlog).
