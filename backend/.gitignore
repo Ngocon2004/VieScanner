@@ -53,6 +53,7 @@ logs/
 htmlcov/
 .tox/
 viescanner.db
+viescanner-*.db
 
 # OCR weights / data
 # Giữ thư mục weights/ (có .gitkeep) nhưng ignore tất cả weights bên trong.
@@ -70,7 +71,7 @@ debug_images/
 
 # Local tuning/eval artifacts (Phase 2.7) - có thể chứa PII từ ảnh thật.
 scripts/eval_results*.json
-scripts/tune_results*.json
+scripts/tune_*.json
 scripts/failed_images*.txt
 scripts/ground_truth*.json
 
