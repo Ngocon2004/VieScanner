@@ -459,7 +459,7 @@ Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_RO
   - BE: quality gate ở real mode / card-presence (hiện mới test OpenCV metrics + batch mock).
   - FE: unit test cho `lib/quality.ts` (precheck) và `useBatchExtract` (gộp client-reject + server-result, race).
 - ⏳ **P4. Tài liệu**: thêm mục `POST /api/extract-batch` + bảng tiêu chí chất lượng vào `backend/README.md` & `frontend/README.md` (API contract mới: response `{ data, confidences, quality }`).
-- ⏳ **P5. (Liên quan, không bắt buộc)** Sửa lint react-hooks **có sẵn** ở 3 file (đã commit ở Session 20, không thuộc tính năng này): `src/app/AuthContext.tsx` (`set-state-in-effect`), `src/app/history/page.tsx` & `src/app/records/page.tsx` (`accessed before declared` → bọc `useCallback`/khai báo trước effect) + dọn unused vars. Trùng mục N5 (commit các file FE chưa track).
+- ✅ **P5. (Liên quan, không bắt buộc)** Sửa lint react-hooks **có sẵn** ở 3 file (đã commit ở Session 20, không thuộc tính năng này): `src/app/AuthContext.tsx` (`set-state-in-effect`), `src/app/history/page.tsx` & `src/app/records/page.tsx` (`accessed before declared` → bọc `useCallback`/khai báo trước effect) + dọn unused vars. Trùng mục N5. **✅ Done ở Session 20**: lint sạch; các điểm `set-state-in-effect` còn lại được suppress có giải trình (fetch-on-mount), fix triệt để khi làm N4 (SWR).
 
 **Definition of Done**: `npm run test:e2e` xanh với luồng batch; ngưỡng `QUALITY_*` chốt theo ảnh thật; test BE/FE bổ sung pass; README mô tả endpoint batch.
 
@@ -556,7 +556,8 @@ Các quyết định bạn cần làm khi đến từng Sprint:
 - `.gitignore`: thêm `*.db` (frontend) + mở rộng `scripts/tune_*.json` (backend) → loại `frontend/viescanner-e2e.db` và `backend/scripts/tune_test_run.json` (artifact từ ảnh thật, tránh lộ PII) khỏi git.
 - Verify trạng thái đã commit: `git status` sạch; backend `pytest -q` -> **37 passed**; frontend `npm test` -> **12 passed**.
 - Chưa push: nhánh `main` đang ahead `origin/main` 9 commit.
-- Mục **N5** (commit các file FE chưa track) -> ✅ Done. Lint **P5 vẫn còn**: `npm run lint` báo **3 errors + 2 warnings** ở `AuthContext.tsx`, `history/page.tsx`, `records/page.tsx` (chưa sửa).
+- Mục **N5** (commit các file FE chưa track) -> ✅ Done.
+- Mục **P5** (lint react-hooks) -> ✅ Done: `npm run lint` đã **sạch** (3 errors + 2 warnings cũ đã xử lý — `useCallback` + khai báo trước effect, dọn unused vars, và `eslint-disable` có giải trình cho fetch-on-mount). Fix triệt để = N4 (chuyển sang SWR/React Query). Re-verify: `npm test` -> **12 passed**.
 
 **Session 19**: triển khai Quality Gate + Batch xử lý nhiều ảnh.
 - Backend: thêm cổng kiểm tra chất lượng ảnh trước OCR (`app/services/image_quality.py`) — độ phân giải, độ nét (Laplacian), độ sáng/lóa, và "có phải thẻ CCCD" (YOLO, real mode). Ngưỡng cứng (chặn) + mềm (cảnh báo) cấu hình qua `QUALITY_*`.
