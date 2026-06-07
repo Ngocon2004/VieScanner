@@ -1,8 +1,8 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getMe, type APIError } from "@/lib/api";
+import { getMe } from "@/lib/api";
 import type { UserRead } from "@/lib/schemas";
 
 interface AuthContextType {
@@ -20,11 +20,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  const fetchUser = async () => {
+  const fetchUser = useCallback(async () => {
     const token = localStorage.getItem("vs_token");
     if (!token) {
-      setUser(null);
-      setLoading(false);
       return;
     }
 
@@ -35,19 +33,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error("Auth initialization failed:", error);
       localStorage.removeItem("vs_token");
       setUser(null);
-    } finally {
-      setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchUser();
-  }, []);
+    let active = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: state is set after async getMe() resolves (backlog N4: migrate to SWR)
+    fetchUser().finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [fetchUser]);
 
   const loginSuccess = async (token: string) => {
     localStorage.setItem("vs_token", token);
     setLoading(true);
-    await fetchUser();
+    try {
+      await fetchUser();
+    } finally {
+      setLoading(false);
+    }
     router.push("/");
   };
 

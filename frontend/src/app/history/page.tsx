@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { getScans, APIError } from "@/lib/api";
 import type { ScanListItem } from "@/lib/schemas";
@@ -14,18 +14,7 @@ export default function HistoryPage() {
   const [scans, setScans] = useState<ScanListItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/login");
-      return;
-    }
-
-    if (user) {
-      void fetchScans();
-    }
-  }, [user, authLoading, router]);
-
-  const fetchScans = async () => {
+  const fetchScans = useCallback(async () => {
     try {
       const data = await getScans();
       setScans(data);
@@ -35,7 +24,19 @@ export default function HistoryPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/login");
+      return;
+    }
+
+    if (user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: state is set after async getScans() resolves (backlog N4: migrate to SWR)
+      void fetchScans();
+    }
+  }, [user, authLoading, router, fetchScans]);
 
   if (authLoading || loading) {
     return (

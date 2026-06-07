@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { getRecords, deleteRecord, APIError } from "@/lib/api";
 import type { CCCDRecordRead } from "@/lib/schemas";
@@ -14,18 +14,7 @@ export default function RecordsPage() {
   const [records, setRecords] = useState<CCCDRecordRead[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push("/login");
-      return;
-    }
-
-    if (user) {
-      void fetchRecords();
-    }
-  }, [user, authLoading, router]);
-
-  const fetchRecords = async () => {
+  const fetchRecords = useCallback(async () => {
     try {
       const data = await getRecords();
       setRecords(data);
@@ -35,7 +24,19 @@ export default function RecordsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/login");
+      return;
+    }
+
+    if (user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: state is set after async getRecords() resolves (backlog N4: migrate to SWR)
+      void fetchRecords();
+    }
+  }, [user, authLoading, router, fetchRecords]);
 
   const handleDelete = async (id: string) => {
     if (!confirm("Bạn có chắc chắn muốn xóa bản ghi này?")) return;
@@ -44,7 +45,7 @@ export default function RecordsPage() {
       await deleteRecord(id);
       setRecords(records.filter((r) => r.id !== id));
       toast.success("Đã xóa bản ghi.");
-    } catch (error) {
+    } catch {
       toast.error("Không thể xóa bản ghi.");
     }
   };
