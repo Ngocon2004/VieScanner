@@ -7,11 +7,13 @@ This document explains the real OCR path used when `OCR_ENGINE=real`.
 ```text
 Image bytes
   -> decode (OpenCV)
+  -> QR read (front-side chip CCCD, if present)
   -> Stage 1: RealCardAligner
   -> Stage 2: RealImageCleaner
   -> Stage 3: RealTextDetector
   -> Stage 4: RealTextRecognizer
   -> Stage 5: RealFieldExtractor
+  -> merge QR over OCR fields (QR wins for the fields it provides)
   -> CCCDData + confidences
 ```
 
@@ -33,7 +35,37 @@ Image bytes
 
 Pipeline validates final fields through `CCCDData` Pydantic schema.
 
+## QR Fast-Path (front-side chip CCCD)
+
+Chip-based CCCD (2021+) embed a QR code on the front, encoding 7 pipe-separated
+fields:
+
+```text
+<id number>|<old CMND>|<full name>|<DOB ddmmyyyy>|<gender>|<residence>|<issue date ddmmyyyy>
+```
+
+`app/services/ocr/qr.py` decodes it with `cv2.QRCodeDetector` (no extra
+dependency, runs in both mock and real engines):
+
+- **QR fields** (`id_number`, `full_name`, `dob`, `gender`, `residence`) come
+  straight from the QR and override the OCR result with confidence `1.0`.
+- **Non-QR fields** (`nationality`, `origin`, `expiry_date`) still come from the
+  OCR extractor — QR does not contain them.
+- **OCR is the fallback**: when no QR is present (or it cannot be parsed as a
+  CCCD payload), the result is the pure OCR output.
+- **QR-only resilience**: if OCR fails (e.g. aligner/detector error) but a QR was
+  read, the response is built from the QR fields plus safe defaults
+  (`nationality = "Việt Nam"`, `origin` placeholder) so the user still gets the
+  high-accuracy QR data.
+
+Dates are normalized from `ddmmyyyy` to `dd/mm/yyyy`. Toggle with
+`OCR_QR_ENABLED` (default on).
+
 ## Tuning Parameters
+
+### QR
+
+- `OCR_QR_ENABLED` (default `true`) — read the front-side QR before OCR.
 
 ### Aligner
 

@@ -375,7 +375,7 @@ Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_RO
 
 ### 🎯 TOP 5 ưu tiên (ROI cao)
 
-1. ⏳ **Đọc QR code mặt trước CCCD** (L1) — accuracy gần như tuyệt đối trên CCCD gắn chip; "ăn điểm" khi present.
+1. ✅ **Đọc QR code mặt trước CCCD** (L1) — accuracy gần như tuyệt đối trên CCCD gắn chip; "ăn điểm" khi present. **Done (Session 20)**.
 2. ⏳ **Semaphore giới hạn OCR đồng thời + warm-up models** (M1, M2) — hết crash khi nhiều request & hết chậm request đầu.
 3. ⏳ **AbortController/timeout cho fetch FE** (N1) — `README_TROUBLESHOOTING` nói đã có nhưng code chưa.
 4. ⏳ **Batch recognition VietOCR** (L2) — giảm latency stage chậm nhất.
@@ -387,7 +387,7 @@ Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_RO
 
 **Mục tiêu**: Tăng accuracy end-to-end, đặc biệt với CCCD gắn chip đời mới.
 
-- ⏳ **L1. QR code reader**: CCCD gắn chip (2021+) có QR mã hóa sẵn `số CCCD | CMND cũ | họ tên | ngày sinh | giới tính | địa chỉ | ngày cấp`. Dùng `cv2.QRCodeDetector` (đã có OpenCV) hoặc `pyzbar`; OCR làm fallback khi không có/đọc lỗi QR. Hiện toàn backend **chưa có** xử lý QR/MRZ.
+- ✅ **L1. QR code reader** (Session 20): `app/services/ocr/qr.py` decode QR mặt trước bằng `cv2.QRCodeDetector` (không thêm dependency). QR ghi đè 5 trường (`id_number, full_name, dob, gender, residence`) với confidence 1.0; OCR vẫn lo `nationality/origin/expiry` + làm fallback khi không có/đọc lỗi QR; thêm fallback **QR-only** khi OCR fail. Bật/tắt qua `OCR_QR_ENABLED`. Test `tests/test_qr.py` (17 case) → backend `pytest -q` **54 passed**; verify decode cv2 thật end-to-end OK.
 - ⏳ **L2. Batch VietOCR**: `app/services/ocr/stages/recognizer.py` (L143-166) đang `predict()` **từng box** trong vòng lặp → đổi sang `predict_batch()` để giảm latency (10-20 box + beamsearch).
 - ⏳ **L3. LLM/VLM fallback extractor**: khi `RealFieldExtractor` để field trống (confidence=0) → gọi LLM/VLM cứu ca khó.
 - ⏳ **L4. Mặt sau CCCD** (gộp Sprint K): ngày cấp, nơi cấp, đặc điểm nhận dạng.
@@ -558,6 +558,7 @@ Các quyết định bạn cần làm khi đến từng Sprint:
 - Chưa push: nhánh `main` đang ahead `origin/main` 9 commit.
 - Mục **N5** (commit các file FE chưa track) -> ✅ Done.
 - Mục **P5** (lint react-hooks) -> ✅ Done: `npm run lint` đã **sạch** (3 errors + 2 warnings cũ đã xử lý — `useCallback` + khai báo trước effect, dọn unused vars, và `eslint-disable` có giải trình cho fetch-on-mount). Fix triệt để = N4 (chuyển sang SWR/React Query). Re-verify: `npm test` -> **12 passed**.
+- **L1 (TOP 1 backlog) — Đọc QR mặt trước CCCD**: thêm `app/services/ocr/qr.py` (cv2.QRCodeDetector, không thêm dependency) + tích hợp vào `pipeline.py` (QR override 5 trường với confidence 1.0; OCR lo `nationality/origin/expiry` + fallback; QR-only khi OCR fail). Config `OCR_QR_ENABLED` (default on), chạy cả mock lẫn real. Backend `pytest -q` -> **54 passed** (+17 test QR); verify decode QR thật bằng cv2 end-to-end OK. Docs: `docs/OCR_PIPELINE.md` mục "QR Fast-Path".
 
 **Session 19**: triển khai Quality Gate + Batch xử lý nhiều ảnh.
 - Backend: thêm cổng kiểm tra chất lượng ảnh trước OCR (`app/services/image_quality.py`) — độ phân giải, độ nét (Laplacian), độ sáng/lóa, và "có phải thẻ CCCD" (YOLO, real mode). Ngưỡng cứng (chặn) + mềm (cảnh báo) cấu hình qua `QUALITY_*`.
