@@ -7,6 +7,7 @@ import type { CCCDData, FieldConfidences } from "@/lib/schemas";
 
 interface UseExtractCCCDState {
   data: CCCDData | null;
+  scan_id: string | null;
   confidences: FieldConfidences;
   loading: boolean;
   error: APIError | null;
@@ -30,6 +31,7 @@ interface UseExtractCCCD extends UseExtractCCCDState {
 export function useExtractCCCD(): UseExtractCCCD {
   const [state, setState] = useState<UseExtractCCCDState>({
     data: null,
+    scan_id: null,
     confidences: {},
     loading: false,
     error: null,
@@ -40,13 +42,14 @@ export function useExtractCCCD(): UseExtractCCCD {
 
   const extract = useCallback(async (file: File) => {
     const currentId = ++requestIdRef.current;
-    setState({ data: null, confidences: {}, loading: true, error: null });
+    setState({ data: null, scan_id: null, confidences: {}, loading: true, error: null });
 
     try {
       const result = await extractCCCD(file);
       if (currentId !== requestIdRef.current) return; // outdated → bỏ qua
       setState({
         data: result.data,
+        scan_id: result.scan_id ?? null,
         confidences: result.confidences,
         loading: false,
         error: null,
@@ -61,13 +64,13 @@ export function useExtractCCCD(): UseExtractCCCD {
               message: "Có lỗi không xác định khi gọi server.",
               status: 0,
             });
-      setState({ data: null, confidences: {}, loading: false, error });
+      setState({ data: null, scan_id: null, confidences: {}, loading: false, error });
     }
   }, []);
 
   const reset = useCallback(() => {
     requestIdRef.current++;
-    setState({ data: null, confidences: {}, loading: false, error: null });
+    setState({ data: null, scan_id: null, confidences: {}, loading: false, error: null });
   }, []);
 
   return { ...state, extract, reset };

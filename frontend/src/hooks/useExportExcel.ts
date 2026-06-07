@@ -12,7 +12,7 @@ interface UseExportExcelState {
 }
 
 interface UseExportExcel extends UseExportExcelState {
-  exportData: (data: CCCDData) => Promise<void>;
+  exportData: (data: CCCDData, scanId?: string) => Promise<void>;
   resetError: () => void;
 }
 
@@ -27,10 +27,10 @@ export function useExportExcel(): UseExportExcel {
     successCount: 0,
   });
 
-  const exportData = useCallback(async (data: CCCDData) => {
+  const exportData = useCallback(async (data: CCCDData, scanId?: string) => {
     setState((prev) => ({ ...prev, loading: true, error: null }));
     try {
-      await exportToExcel(data);
+      await exportToExcel(data, scanId);
       setState((prev) => ({
         loading: false,
         error: null,
