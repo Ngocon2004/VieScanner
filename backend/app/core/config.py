@@ -38,7 +38,7 @@ class Settings(BaseSettings):
     ocr_aligner_retry_conf_thresholds_raw: str = "0.15,0.10,0.05"
 
     ocr_detector_model: str = "PP-OCRv5_server_det"
-    ocr_detector_conf_threshold: float = 0.30
+    ocr_detector_conf_threshold: float = 0.25
     ocr_detector_padding: int = 4
 
     ocr_cleaner_shadow_kernel_size: int = 7
@@ -49,6 +49,31 @@ class Settings(BaseSettings):
 
     ocr_extractor_fuzzy_threshold: int = 80
     ocr_debug_save: bool = False
+    ocr_max_image_side_px: int = 2000
+    ocr_result_cache_enabled: bool = True
+    ocr_result_cache_ttl_seconds: int = 86400
+
+    # ----- Image quality gate (pre-OCR) -----
+    # Cổng kiểm tra chất lượng ảnh trước OCR. Ngưỡng "hard" => chặn (không OCR);
+    # ngưỡng "soft" => vẫn OCR nhưng cảnh báo. Tắt bằng `QUALITY_CHECK_ENABLED=false`.
+    quality_check_enabled: bool = True
+    quality_max_batch_files: int = 20
+    # Độ phân giải: cạnh ngắn (px). Nhỏ hơn hard -> chặn; nhỏ hơn soft -> cảnh báo.
+    quality_min_side_hard_px: int = 320
+    quality_min_side_soft_px: int = 640
+    # Độ nét: variance của Laplacian. Thấp hơn hard -> mờ nặng (chặn); thấp hơn soft -> cảnh báo.
+    quality_blur_var_hard: float = 30.0
+    quality_blur_var_soft: float = 100.0
+    # Độ sáng: mean luma (0-255). Quá tối / quá sáng.
+    quality_dark_hard: float = 35.0
+    quality_dark_soft: float = 65.0
+    quality_bright_hard: float = 243.0
+    quality_bright_soft: float = 220.0
+    # Lóa/cháy sáng: tỉ lệ pixel gần trắng (0-1). Cao hơn hard -> chặn; cao hơn soft -> cảnh báo.
+    quality_glare_hard: float = 0.30
+    quality_glare_soft: float = 0.12
+    # Kiểm tra "có phải thẻ CCCD" bằng YOLO (chỉ hiệu lực khi OCR_ENGINE=real).
+    quality_card_check_enabled: bool = True
 
     # ----- Database -----
     # Production: postgresql+asyncpg://user:pass@host:5432/dbname

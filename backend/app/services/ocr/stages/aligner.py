@@ -149,6 +149,19 @@ class RealCardAligner:
             "Vui lòng chụp lại ảnh sao cho thấy rõ cả 4 góc thẻ.",
         )
 
+    def count_corners(self, image: "np.ndarray") -> int:
+        """Đếm số góc CCCD YOLO phát hiện được (0-4). Dùng cho quality gate.
+
+        Không raise: trả về 0 nếu ảnh rỗng hoặc inference lỗi để caller tự quyết.
+        """
+        if image is None or getattr(image, "size", 0) == 0:
+            return 0
+        try:
+            corners = self._detect_corners(image, conf_threshold=self.conf_threshold)
+        except OCRStageError:
+            return 0
+        return len(corners)
+
     # ── internals ─────────────────────────────────────────────────────────
 
     def _detect_corners(

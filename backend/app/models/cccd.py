@@ -7,6 +7,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.models.quality import QualityReport
+
 
 _ID_NUMBER_RE = re.compile(r"^\d{12}$")
 _DATE_RE = re.compile(r"^(\d{2})/(\d{2})/(\d{4})$")
@@ -75,6 +77,9 @@ class CCCDExtractResponse(BaseModel):
     data: CCCDData
     confidences: dict[str, float] = Field(default_factory=dict)
     scan_id: str | None = None
+    quality: QualityReport | None = Field(
+        default=None, description="Báo cáo chất lượng ảnh (kèm cảnh báo soft nếu có)."
+    )
 
     @field_validator("confidences")
     @classmethod
@@ -83,6 +88,33 @@ class CCCDExtractResponse(BaseModel):
         for key, value in v.items():
             normalized[key] = max(0.0, min(1.0, float(value)))
         return normalized
+
+
+class BatchItemResult(BaseModel):
+    """Kết quả xử lý 1 ảnh trong batch."""
+
+    index: int = Field(..., description="Vị trí ảnh trong danh sách upload (0-based)")
+    filename: str | None = None
+    accepted: bool = Field(..., description="Ảnh có đạt tiêu chuẩn để OCR không")
+    status: str = Field(
+        ...,
+        description="extracted = đã trích xuất | rejected = bị loại do chất lượng/định dạng | ocr_failed = đạt nhưng OCR lỗi",
+    )
+    quality: QualityReport | None = None
+    data: CCCDData | None = None
+    confidences: dict[str, float] = Field(default_factory=dict)
+    scan_id: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+class BatchExtractResponse(BaseModel):
+    """Phản hồi cho endpoint xử lý nhiều ảnh."""
+
+    total: int
+    accepted_count: int
+    rejected_count: int
+    results: list[BatchItemResult] = Field(default_factory=list)
 
 
 class ErrorResponse(BaseModel):

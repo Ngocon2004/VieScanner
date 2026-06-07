@@ -1,5 +1,7 @@
 ﻿from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -68,6 +70,30 @@ class ScanRepository:
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def get_latest_success_by_image_hash(
+        self,
+        *,
+        image_hash: str,
+        user_id: str | None,
+        ttl_seconds: int = 0,
+    ) -> Scan | None:
+        stmt = (
+            select(Scan)
+            .where(
+                Scan.image_hash == image_hash,
+                Scan.user_id == user_id,
+                Scan.status == ScanStatus.SUCCESS,
+                Scan.raw_data.is_not(None),
+            )
+            .order_by(desc(Scan.created_at))
+            .limit(1)
+        )
+        if ttl_seconds > 0:
+            cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)
+            stmt = stmt.where(Scan.created_at >= cutoff)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
 
 
 __all__ = ["ScanRepository"]

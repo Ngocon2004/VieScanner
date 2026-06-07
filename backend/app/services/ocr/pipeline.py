@@ -70,6 +70,24 @@ def _decode_image(image_bytes: bytes) -> "np.ndarray":
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if img is None:
         raise OCRFailedError("Không thể decode ảnh đầu vào.")
+    # Resize ảnh lớn để giảm latency/RAM của detector+recognizer.
+    max_side = max(0, int(settings.ocr_max_image_side_px))
+    if max_side > 0:
+        h, w = img.shape[:2]
+        longest = max(h, w)
+        if longest > max_side:
+            scale = max_side / float(longest)
+            new_w = max(1, int(round(w * scale)))
+            new_h = max(1, int(round(h * scale)))
+            img = cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+            logger.debug(
+                "Resized OCR input from {}x{} -> {}x{} (max_side={})",
+                w,
+                h,
+                new_w,
+                new_h,
+                max_side,
+            )
     return img
 
 
@@ -92,13 +110,15 @@ class OCRPipeline:
         self._extractor = extractor
 
     async def run(self, image_bytes: bytes) -> CCCDExtractResponse:
-        """Async wrapper – API endpoint dùng async, pipeline xử lý sync."""
-        response, _trace = self._run_sync(image_bytes)
+        """Async wrapper – sử dụng thread pool để không block event loop."""
+        import asyncio
+        response, _trace = await asyncio.to_thread(self._run_sync, image_bytes)
         return response
 
     async def run_with_trace(self, image_bytes: bytes) -> tuple[CCCDExtractResponse, PipelineTrace]:
-        """Chạy pipeline và trả thêm trace timings/debug info."""
-        return self._run_sync(image_bytes)
+        """Chạy pipeline (non-blocking) và trả thêm trace timings/debug info."""
+        import asyncio
+        return await asyncio.to_thread(self._run_sync, image_bytes)
 
     def _run_sync(self, image_bytes: bytes) -> tuple[CCCDExtractResponse, PipelineTrace]:
         try:

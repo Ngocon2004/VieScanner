@@ -16,12 +16,22 @@ class VieScannerError(Exception):
     code: str = "internal_error"
     message: str = "CÃ³ lá»—i xáº£y ra. Vui lÃ²ng thá»­ láº¡i."
 
-    def __init__(self, message: str | None = None, *, code: str | None = None) -> None:
+    details: list | None = None
+
+    def __init__(
+        self,
+        message: str | None = None,
+        *,
+        code: str | None = None,
+        details: list | None = None,
+    ) -> None:
         super().__init__(message or self.message)
         if message:
             self.message = message
         if code:
             self.code = code
+        if details is not None:
+            self.details = details
 
 
 class ImageValidationError(VieScannerError):
@@ -38,6 +48,14 @@ class OCRFailedError(VieScannerError):
     status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
     code = "ocr_failed"
     message = "KhÃ´ng thá»ƒ trÃ­ch xuáº¥t thÃ´ng tin tá»« áº£nh."
+
+
+class ImageQualityError(VieScannerError):
+    """Ảnh không đạt tiêu chuẩn chất lượng (mờ, tối, lóa, độ phân giải thấp, không phải CCCD)."""
+
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    code = "image_quality_low"
+    message = "Ảnh không đạt tiêu chuẩn để trích xuất. Vui lòng chụp lại."
 
 
 class ExcelGenerationError(VieScannerError):

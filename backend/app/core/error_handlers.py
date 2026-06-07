@@ -30,10 +30,11 @@ async def _viescanner_error_handler(request: Request, exc: VieScannerError) -> J
     logger.bind(request_id=rid).warning(
         "{code}: {message}", code=exc.code, message=exc.message
     )
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"code": exc.code, "message": exc.message, "request_id": rid},
-    )
+    content: dict = {"code": exc.code, "message": exc.message, "request_id": rid}
+    details = getattr(exc, "details", None)
+    if details:
+        content["details"] = jsonable_encoder(details)
+    return JSONResponse(status_code=exc.status_code, content=content)
 
 
 async def _validation_error_handler(
