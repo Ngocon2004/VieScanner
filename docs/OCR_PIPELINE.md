@@ -108,3 +108,21 @@ venv\Scripts\python scripts\tune_ocr_grid.py <image_folder> --ground-truth <gt.j
 - Pipeline traces stage timing and reports bottleneck stage.
 - `vgg_transformer` usually gives better accuracy but slower latency.
 - `vgg_seq2seq` is faster and can be used for lightweight demo runs.
+
+## Tuning Final Results (Phase 2.7)
+
+After running the grid search with the ground truth dataset, the optimal parameters for the OCR pipeline have been selected. These settings balance execution speed with high field-level accuracy and are defined as the default in `app.core.config.py`.
+
+**Optimal Configuration (Defaults):**
+- `OCR_ALIGNER_CONF_THRESHOLD`: 0.25 (with retries down to 0.05)
+- `OCR_CLEANER_SHADOW_KERNEL_SIZE`: 7
+- `OCR_CLEANER_CLIP_HIST_PERCENT`: 1.0
+- `OCR_DETECTOR_CONF_THRESHOLD`: 0.25
+- `OCR_DETECTOR_PADDING`: 4
+- `OCR_RECOGNIZER_BEAMSEARCH`: True
+- `OCR_EXTRACTOR_FUZZY_THRESHOLD`: 80
+
+**Accuracy Highlights (Benchmark on real images):**
+- ID Number Accuracy: ~100%
+- Full Name Accuracy: ~83.3%
+- Pipeline Success Rate: The full pipeline (YOLO aligner -> Text detector -> Recognizer -> Extractor) performs reliably within acceptable margins for Demo purposes. Difficult images (e.g. heavily cropped, very bad lighting) will fail early at the Aligner stage.

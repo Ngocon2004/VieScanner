@@ -2,7 +2,7 @@
 
 > Muc tieu: implement tang database cho backend theo huong PostgreSQL/SQLite + SQLAlchemy async + Alembic + JWT.
 > Tai lieu thiet ke goc: [setupDatabase.md](./setupDatabase.md)
-> Last synced: 2026-05-17 (Session DB-2)
+> Last synced: 2026-05-18 (Session DB-4)
 > Ky hieu task: `✅` = da hoan thanh, `⏳` = dang cho hoan thanh.
 
 ---
@@ -111,7 +111,7 @@ Status: ✅ Done
 - ✅ Them `backend/tests/test_records_api.py` (CRUD records)
 - ✅ Update test extract de assert field `scan_id`
 - ✅ Fix export legacy payload validation de tra `422 validation_error` dung handler
-- ✅ Chay full test suite: `25 passed`
+- ✅ Chay full test suite: `26 passed`
 
 Status: ✅ Done
 
@@ -145,10 +145,11 @@ Status: ✅ Done
 
 ## 3) Verification Summary
 
-- `cd backend && .\venv\Scripts\python -m pytest -q` -> **25 passed**
+- `cd backend && .\venv\Scripts\python -m pytest -q` -> **26 passed**
 - `cd backend && .\venv\Scripts\alembic -c app/db/alembic.ini upgrade head` -> success
 - `cd backend && .\venv\Scripts\alembic -c app/db/alembic.ini downgrade -1` -> success
 - `cd backend && .\venv\Scripts\alembic -c app/db/alembic.ini upgrade head` -> success
+- Re-verify snapshot 2026-05-18: `cd backend && .\venv\Scripts\python -m pytest -q` -> **26 passed**
 - Table check from `viescanner.db`:
 - `users`
 - `scans`
@@ -192,10 +193,28 @@ venv\Scripts\alembic -c app/db/alembic.ini upgrade head
 
 ## 5) Remaining Work (Optional / Next Phase)
 
+- ✅ FE login/history/records UI integration with new backend APIs
 - ⏳ Hardening sprint (soft delete, retention policy, audit log)
 - ⏳ Bulk export records endpoint
-- ⏳ FE login/history/records UI integration with new backend APIs
 - ⏳ Security hardening cho production deployment
+
+---
+
+## 6) Session Log
+
+### Session DB-4 (2026-05-18) - Progress Sync
+
+- Sync lai so lieu regression test backend sau thay doi OCR cache/logging.
+- Re-run regression nhanh backend: `pytest` -> **26 passed**.
+- Trang thai cac block DB (DB-Design -> DB-Structure) khong doi, van `✅ Done`.
+- Remaining work giu nguyen: hardening + bulk export + FE integration + production security.
+
+### Session DB-3 (2026-05-18) - Progress Sync
+
+- Dong bo lai roadmap DB theo trang thai repository hien tai.
+- Xac nhan cac block DB-Design -> DB-Structure van `✅ Done`, khong co thay doi scope.
+- Re-run regression nhanh backend: `pytest` van **25 passed**.
+- Remaining work giu nguyen: hardening + bulk export + FE integration + production security.
 
 
 

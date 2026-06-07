@@ -55,3 +55,12 @@ backend/
 - `/api/extract` now logs scan history and returns optional `scan_id`.
 - `/api/export` now persists `cccd_records`, marks `exported_at`, and logs corrections.
 - Migration baseline: `backend/app/db/migrations/versions/0001_initial.py` for `users`, `scans`, `cccd_records`, `corrections`.
+
+## Image Quality Gate + Batch Update (2026-06-05)
+- Added pre-OCR quality gate: `backend/app/services/image_quality.py` (OpenCV blur/brightness/glare/resolution + YOLO card-presence in real mode).
+- Severity model: `hard` => chặn OCR (`ImageQualityError`, code `image_quality_low`, kèm `details` = danh sách issue); `soft` => vẫn OCR + cảnh báo.
+- New schemas: `app/models/quality.py` (`QualityIssue`, `QualityReport`); `CCCDExtractResponse.quality`; `BatchItemResult`/`BatchExtractResponse` trong `app/models/cccd.py`.
+- New endpoint: `POST /api/extract-batch` (nhiều ảnh) — phân loại từng ảnh, ảnh đạt thì OCR, ảnh không đạt trả lý do; 1 ảnh lỗi không làm hỏng batch. `/api/extract` cũng đã gắn quality gate.
+- Config mới: `QUALITY_*` trong `app/core/config.py` + `.env.example`.
+- Frontend: upload nhiều ảnh (`ImageUpload`), tiền kiểm client (`src/lib/quality.ts`), hook `useBatchExtract`, panel kết quả `components/batch/BatchResultPanel.tsx`; `api.ts` thêm `extractBatch` + `fetchWithTimeout` (AbortController).
+- Tests: `backend/tests/test_image_quality.py`, `backend/tests/test_batch_api.py` (tổng backend 37 passed; frontend 12 passed; `npm run build` OK).

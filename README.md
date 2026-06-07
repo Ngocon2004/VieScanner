@@ -95,6 +95,7 @@ VieScanner/
 - [Frontend Setup](./frontend/README.md)
 - [Architecture](./docs/ARCHITECTURE.md)
 - [OCR Pipeline Details](./docs/OCR_PIPELINE.md)
+- [Troubleshooting (No-Hang Checklist)](./README_TROUBLESHOOTING.md)
 - [Roadmap](./PROJECT_ROADMAP.md)
 
 ## Current Status

@@ -40,11 +40,14 @@ Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_RO
 | **Phase 2.3** | RealTextDetector (PaddleOCR) | ✅ Done |
 | **Phase 2.4** | RealTextRecognizer (VietOCR) | ✅ Done |
 | **Phase 2.5** | RealFieldExtractor (rule-based) | ✅ Done |
-| **Phase 2.7** | Tuning với ảnh CCCD thật | ⏳ In progress (đã benchmark 63 ảnh thật, chờ ground-truth để chốt accuracy) |
-| **Phase 3*** | UX polish (selective) | ✅ Done (selective) |
-| **Phase 6*** | Testing (selective) | ✅ Done (selective) |
+| **Phase 2.7** | Tuning với ảnh CCCD thật | ✅ Done (Đã grid-search và chốt bộ tham số tối ưu) |
+| **Phase 3*** | UX polish (selective) | ✅ Done (Toast, Skeleton, Confidence, Responsive) |
+| **Phase 6*** | Testing (selective) | ✅ Done (Unit/Integration + Playwright E2E hardened) |
 | **Sprint DB** | Backend database layer (SQLAlchemy/Alembic/JWT API/history) | ✅ Done |
-| **Documentation** | README final, screenshots, demo video | ⏳ In progress (README/docs kỹ thuật đã xong; còn screenshots + video + slide) |
+| **Sprint FE-Int** | Frontend History & Records UI integration | ✅ Done |
+| **Documentation** | README final, screenshots | ⏳ In progress (còn 2 screenshot phụ; video/slide đã bỏ scope) |
+| **Quality Gate + Batch** | Lọc chất lượng ảnh (cứng/mềm) + xử lý nhiều ảnh + báo lý do ảnh không đạt | ✅ Core done (Session 19) — follow-up: Sprint P |
+| **Backlog Tối ưu** | Đề xuất cải tiến accuracy/perf/UX/security (Sprint L–O) | ⏳ Đề xuất (Session 18) |
 
 \* Cho đồ án chỉ làm subset.
 
@@ -281,7 +284,10 @@ Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_RO
 - ✅ `__tests__/api.test.ts` — API error handling + Content-Disposition parse
 
 **E2E (optional)**:
-- ⏳ `playwright` — 1 test scenario: upload → check form → export
+- ✅ Setup `playwright` + `playwright.config.ts` (webServer backend/frontend)
+- ✅ `e2e/ocr-export.spec.ts` — scenario upload → OCR → export
+- ✅ `e2e/docs-capture.spec.ts` — auto capture screenshots + API call artifact
+- ⏳ Harden lệnh `npm run test:e2e`: test đã pass nhưng command còn timeout teardown (cần đổi FE webServer command sang `node .next/standalone/server.js` khi `output: "standalone"`)
 
 **Definition of Done**:
 - Backend ~10 test cases pass
@@ -317,25 +323,17 @@ Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_RO
 - ✅ **`docs/ARCHITECTURE.md`** — sơ đồ pipeline + sequence diagram
 - ✅ **`docs/OCR_PIPELINE.md`** — giải thích chi tiết 5 stage (cho thuyết trình)
 - ⏳ Screenshots:
-  - Upload page
-  - Form sau OCR
-  - Excel output mở trong Excel
-  - DevTools network tab (show API call)
-- ⏳ **Demo video 2-3 phút** (screencast)
-  - Upload ảnh CCCD → wait OCR → edit → export Excel → open in Excel
-- ⏳ **Slide thuyết trình** (10-15 slides):
-  - Problem statement
-  - Solution / pipeline architecture
-  - Tech stack
-  - Demo (live hoặc video)
-  - Challenges + how solved
-  - Future work
-  - Q&A
+  - ✅ Upload page (`frontend/docs/screenshots/upload-page.png`)
+  - ✅ Form sau OCR (`frontend/docs/screenshots/form-after-ocr.png`)
+  - ✅ Sau export (`frontend/docs/screenshots/after-export.png`)
+  - ⏳ Excel output mở trong Excel (chưa capture)
+  - ⏳ DevTools network tab screenshot (hiện có `frontend/docs/screenshots/api-calls.json`, chưa có ảnh tab)
+- ⛔ ~~Demo video 2-3 phút~~ — bỏ scope (sẽ tính sau nếu cần)
+- ⛔ ~~Slide thuyết trình 10-15 slides~~ — bỏ scope (sẽ tính sau nếu cần)
 
 **Definition of Done**:
 - README đẹp, ai clone về cũng setup được
-- 1 video demo runable
-- 1 bộ slide hoàn chỉnh
+- Screenshots cơ bản đầy đủ
 
 **Estimate**: 2-3h (không tính làm slide)
 
@@ -345,19 +343,19 @@ Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_RO
 
 ### **Sprint I — Dockerize**
 
-- ⏳ `backend/Dockerfile` (multi-stage, slim Python + ML deps)
-- ⏳ `frontend/Dockerfile` (Next.js standalone output)
-- ⏳ `docker-compose.yml` — backend + frontend + nginx
+- ✅ `backend/Dockerfile` (Python 3.13 slim; default mock OCR cho local/demo)
+- ✅ `frontend/Dockerfile` (Next.js standalone build + runtime)
+- ✅ `docker-compose.yml` + `docker/nginx/default.conf` — backend + frontend + nginx reverse proxy
 - ⏳ README có "Run with Docker" section
 
 **Estimate**: 3-4h
 
 ### **Sprint J — Performance**
 
-- ⏳ Image resize trước OCR (giảm RAM nếu ảnh > 2000px)
-- ⏳ Cache OCR result theo image hash (tránh OCR lại)
-- ⏳ Client-side image compression (`browser-image-compression`)
-- ⏳ Bundle analyzer FE → cắt dependency thừa
+- ✅ Image resize trước OCR (BE `OCR_MAX_IMAGE_SIDE_PX`; FE preprocess upload)
+- ✅ Cache OCR result theo image hash (`OCR_RESULT_CACHE_ENABLED`, TTL)
+- ✅ Client-side image compression (Canvas API custom ở `frontend/src/lib/image.ts`)
+- ✅ Bundle analyzer FE (`@next/bundle-analyzer`, script `npm run analyze`)
 
 **Estimate**: 3-4h
 
@@ -366,6 +364,104 @@ Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_RO
 - ⏳ Add mặt sau detector + OCR
 - ⏳ Schema: `cccd_back_data` (ngày cấp, nơi cấp, đặc điểm nhân dạng)
 - ⏳ UI 2-step upload (mặt trước → mặt sau)
+
+**Estimate**: 4-6h
+
+---
+
+## 🔧 Đề xuất Tối ưu & Cải tiến (Backlog — Session 18)
+
+> Các đề xuất dưới đây được rà soát **trực tiếp từ code** (không chỉ docs). Tất cả đang ở trạng thái ⏳ (chưa làm). Sắp xếp theo nhóm + ROI. Tham chiếu file/dòng để dễ implement sau.
+
+### 🎯 TOP 5 ưu tiên (ROI cao)
+
+1. ⏳ **Đọc QR code mặt trước CCCD** (L1) — accuracy gần như tuyệt đối trên CCCD gắn chip; "ăn điểm" khi present.
+2. ⏳ **Semaphore giới hạn OCR đồng thời + warm-up models** (M1, M2) — hết crash khi nhiều request & hết chậm request đầu.
+3. ⏳ **AbortController/timeout cho fetch FE** (N1) — `README_TROUBLESHOOTING` nói đã có nhưng code chưa.
+4. ⏳ **Batch recognition VietOCR** (L2) — giảm latency stage chậm nhất.
+5. ⏳ **Ghi `scans` ở background + retention** (M4, M5) — gọn response & DB không phình.
+
+---
+
+### **Sprint L — Nâng độ chính xác OCR**
+
+**Mục tiêu**: Tăng accuracy end-to-end, đặc biệt với CCCD gắn chip đời mới.
+
+- ⏳ **L1. QR code reader**: CCCD gắn chip (2021+) có QR mã hóa sẵn `số CCCD | CMND cũ | họ tên | ngày sinh | giới tính | địa chỉ | ngày cấp`. Dùng `cv2.QRCodeDetector` (đã có OpenCV) hoặc `pyzbar`; OCR làm fallback khi không có/đọc lỗi QR. Hiện toàn backend **chưa có** xử lý QR/MRZ.
+- ⏳ **L2. Batch VietOCR**: `app/services/ocr/stages/recognizer.py` (L143-166) đang `predict()` **từng box** trong vòng lặp → đổi sang `predict_batch()` để giảm latency (10-20 box + beamsearch).
+- ⏳ **L3. LLM/VLM fallback extractor**: khi `RealFieldExtractor` để field trống (confidence=0) → gọi LLM/VLM cứu ca khó.
+- ⏳ **L4. Mặt sau CCCD** (gộp Sprint K): ngày cấp, nơi cấp, đặc điểm nhận dạng.
+
+**Impact**: L1 rất cao, L2 cao, L3/L4 trung bình | **Effort**: L1/L2 thấp–TB, L3/L4 cao.
+
+---
+
+### **Sprint M — Ổn định & hiệu năng backend**
+
+**Mục tiêu**: Chạy ổn định khi nhiều request + giảm latency cảm nhận.
+
+- ⏳ **M1. Semaphore OCR**: engine là singleton (`lru_cache maxsize=1`), model dùng chung; `asyncio.to_thread` cho chạy song song trên **cùng instance** YOLO/Paddle/VietOCR (không thread-safe) → nguy cơ crash/OOM GPU 4GB. Thêm `asyncio.Semaphore` (env `OCR_MAX_CONCURRENCY`).
+- ⏳ **M2. Warm-up lúc startup**: warm engine trong `lifespan` (main.py) khi `OCR_ENGINE=real`; hiện `lifespan` chỉ `ping_database()` (main.py L30-31) → request đầu rất chậm.
+- ⏳ **M3. `/health` trả `ocr_engine_ready`** (PHASE_2_PLAN 2.6.3); hiện chỉ trả `status+version` (main.py L68-70).
+- ⏳ **M4. Ghi `scans` qua `BackgroundTasks`**: bỏ `await db.commit()` khỏi luồng response (ocr_controller.py L88-104, L208).
+- ⏳ **M5. Retention `scans`**: job xóa scan cũ > N ngày — bảng phình mỗi request (kể cả cache hit ghi row `:cache`).
+- ⏳ **M6. In-memory LRU trước DB cache**: cache hiện luôn round-trip DB (scan_repository.py L74-96).
+- ⏳ **M7. Pool config Postgres** cho prod: `pool_size/max_overflow/pool_recycle` (session.py L16-22 mới chỉ có `pool_pre_ping`).
+
+**Impact**: M1/M2 cao | **Effort**: phần lớn thấp.
+
+---
+
+### **Sprint N — Frontend / UX**
+
+**Mục tiêu**: Không treo UI, duyệt lịch sử/bản ghi mượt hơn.
+
+- ⏳ **N1. AbortController + timeout** cho `request()` trong `frontend/src/lib/api.ts` (L88 `fetch` chưa có `signal`/timeout).
+- ⏳ **N2. Nén ảnh trong Web Worker / OffscreenCanvas**: `prepareImageForUpload` chạy Canvas trên main thread → giật UI với ảnh lớn.
+- ⏳ **N3. Pagination + search** cho History/Records (BE đã hỗ trợ `limit/offset`, FE mới load 50 dòng).
+- ⏳ **N4. SWR/React Query** cache cho History/Records (đỡ fetch lại mỗi lần vào trang).
+- ⏳ **N5. Commit các file FE chưa track**: `login/register/history/records`, `AuthContext`, `Navbar`, thư mục `e2e/` đã có trên disk nhưng chưa commit git (để khớp "Sprint FE-Int Done").
+
+**Impact**: N1/N3 TB–cao | **Effort**: thấp–TB.
+
+---
+
+### **Sprint O — Bảo mật & vận hành (theo scope đồ án)**
+
+**Mục tiêu**: Sẵn sàng nếu deploy public; bổ sung test.
+
+- ⏳ **O1. Chặn startup nếu `JWT_SECRET=CHANGE_ME`** ở môi trường prod (config.py L63 default yếu).
+- ⏳ **O2. Phát hành refresh token thật**: `jwt_refresh_expire_days` có config nhưng `/refresh` chỉ cấp lại access token.
+- ⏳ **O3. Rate limiting** (`slowapi`) cho `/extract`, `/auth/*`.
+- ⏳ **O4. Composite index** `(image_hash, user_id, status, created_at)` cho query cache (Postgres nhiều dòng).
+- ⏳ **O5. Test bổ sung**: token hết hạn/sai, isolation (user A không truy cập dữ liệu user B), biên pagination.
+- ⏳ **O6. Harden `npm run test:e2e`** (timeout teardown — Sprint G còn pending).
+
+> **Đính chính khách quan**: CORS `allow_headers=["*"]` + `allow_origins` cụ thể **không phải lỗ hổng**; auth guard client-side bị "bypass" **không lộ dữ liệu** vì BE vẫn chặn bằng `get_current_user` → 2 mục này ưu tiên thấp.
+
+**Impact**: O1/O2 cao nếu deploy | **Effort**: thấp–TB.
+
+---
+
+### **Sprint P — Hoàn thiện Quality Gate + Batch (follow-up Session 19)**
+
+**Bối cảnh**: Core đã xong & verify (backend 37 pass, FE 12 pass, build OK). Các việc dưới đây là phần còn lại để hoàn thiện trọn vẹn — làm tiếp ở phiên sau.
+
+- ⏳ **P1. Cập nhật E2E Playwright cho luồng batch**: `e2e/ocr-export.spec.ts` + `e2e/helpers.ts` đang viết theo luồng 1 ảnh cũ. Cần:
+  - `uploadMockImage` → hỗ trợ chọn nhiều file (input giờ có `multiple`).
+  - Chờ `BatchResultPanel` (heading "Bước 2: Kết quả phân loại") thay vì form xuất hiện ngay.
+  - Chọn 1 ảnh đạt → `CCCDForm` (auto-select ảnh đạt đầu tiên) → export.
+  - Rà lại `docs-capture.spec.ts` (screenshot) cho UI mới.
+- ⏳ **P2. Chạy thử `OCR_ENGINE=real` + tinh chỉnh ngưỡng `QUALITY_*`** với ảnh CCCD thật (dataset `Data_CCCD_5.26`):
+  - Kiểm tra false-positive/negative của `blur_var_hard/soft`, `dark/bright`, `glare`, và card-presence (YOLO).
+  - Chốt default phù hợp trong `app/core/config.py` (+ cập nhật `.env.example`, `docs/OCR_PIPELINE.md`).
+- ⏳ **P3. Bổ sung test còn thiếu**:
+  - BE: quality gate ở real mode / card-presence (hiện mới test OpenCV metrics + batch mock).
+  - FE: unit test cho `lib/quality.ts` (precheck) và `useBatchExtract` (gộp client-reject + server-result, race).
+- ⏳ **P4. Tài liệu**: thêm mục `POST /api/extract-batch` + bảng tiêu chí chất lượng vào `backend/README.md` & `frontend/README.md` (API contract mới: response `{ data, confidences, quality }`).
+- ⏳ **P5. (Liên quan, không bắt buộc)** Sửa lint react-hooks **có sẵn** ở 3 file CHƯA commit (không thuộc tính năng này): `src/app/AuthContext.tsx` (`set-state-in-effect`), `src/app/history/page.tsx` & `src/app/records/page.tsx` (`accessed before declared` → bọc `useCallback`/khai báo trước effect) + dọn unused vars. Trùng mục N5 (commit các file FE chưa track).
+
+**Definition of Done**: `npm run test:e2e` xanh với luồng batch; ngưỡng `QUALITY_*` chốt theo ảnh thật; test BE/FE bổ sung pass; README mô tả endpoint batch.
 
 **Estimate**: 4-6h
 
@@ -448,7 +544,46 @@ Các quyết định bạn cần làm khi đến từng Sprint:
 
 ---
 
-**Last updated**: Session 15 (sync roadmap sau khi hoàn tất và gom DB layer về `app/db`).
+**Last updated**: Session 19 (triển khai Quality Gate + Batch xử lý nhiều ảnh).
+- Backend: thêm cổng kiểm tra chất lượng ảnh trước OCR (`app/services/image_quality.py`) — độ phân giải, độ nét (Laplacian), độ sáng/lóa, và "có phải thẻ CCCD" (YOLO, real mode). Ngưỡng cứng (chặn) + mềm (cảnh báo) cấu hình qua `QUALITY_*`.
+- Backend: endpoint mới `POST /api/extract-batch` (nhiều ảnh) + gắn quality gate vào `/api/extract`; `ImageQualityError` (code `image_quality_low`) trả `details` = danh sách lý do. Schemas: `app/models/quality.py`, `BatchItemResult`/`BatchExtractResponse`.
+- Frontend: upload nhiều ảnh, tiền kiểm phía client (`src/lib/quality.ts`), hook `useBatchExtract`, panel kết quả `BatchResultPanel` (đạt/cần xem lại + lý do), `api.ts` thêm `extractBatch` + `fetchWithTimeout` (AbortController — đồng thời xử lý mục N1 của backlog).
+- Verify: backend `pytest -q` -> **37 passed** (thêm `test_image_quality`, `test_batch_api`); frontend `npm test` -> **12 passed**; `npm run build` OK; eslint sạch trên các file mới/sửa.
+- Lưu ý: e2e Playwright (`ocr-export.spec`) dựa trên luồng 1 ảnh cũ — cần cập nhật cho luồng batch (chưa làm trong session này).
+- Lint còn báo lỗi sẵn có ở 3 file CHƯA commit không thuộc tính năng này (`AuthContext.tsx`, `history/page.tsx`, `records/page.tsx`) — đề xuất xử lý riêng.
+
+**Session 18**: rà soát code để bổ sung backlog tối ưu & cải tiến.
+- Thêm section "🔧 Đề xuất Tối ưu & Cải tiến (Backlog — Session 18)": Sprint L (accuracy), M (backend ổn định/perf), N (FE/UX), O (bảo mật/vận hành) + TOP 5 ưu tiên.
+- Rà soát **trực tiếp code** (không chỉ docs), các điểm đáng lưu ý:
+  - `frontend/src/lib/api.ts` `request()` chưa có AbortController/timeout dù `README_TROUBLESHOOTING` nói "đã thêm".
+  - `recognizer.py` nhận dạng per-box (chưa dùng `predict_batch`).
+  - Toàn backend chưa có đọc QR/MRZ — cơ hội tăng accuracy lớn nhất cho CCCD gắn chip.
+  - Chưa có semaphore giới hạn OCR đồng thời; pre-warm chỉ chạy lazy, `lifespan` chỉ ping DB.
+  - Các trang FE `login/register/history/records`, `AuthContext`, `Navbar`, thư mục `e2e/` đã có trên disk nhưng **chưa commit git**.
+- Không thay đổi code feature; chỉ cập nhật tài liệu roadmap.
+
+**Session 17**: progress sync theo snapshot code/test ngày 2026-05-18.
+- Đồng bộ tiến độ roadmap theo thay đổi mới:
+  - Sprint I (Dockerize): đã có `backend/Dockerfile`, `frontend/Dockerfile`, `docker-compose.yml`, `docker/nginx/default.conf`.
+  - Sprint J (Performance): đã có resize input OCR, cache theo image hash, nén ảnh client-side, bundle analyzer.
+  - Sprint G optional: đã có Playwright E2E (`ocr-export`, `docs-capture`) + artifacts screenshot.
+  - Sprint H: screenshots tự động đã sinh trong `frontend/docs/screenshots/`; còn ảnh mở file Excel trong app desktop + video + slide.
+- Re-verify test suite:
+  - `cd backend && .\venv\Scripts\python -m pytest -q` -> **26 passed**.
+  - `cd frontend && npm.cmd test -- --run` -> **12 passed**.
+  - `cd frontend && npm.cmd run test:e2e` -> 2 test Playwright pass, nhưng command hiện timeout ở bước teardown (cần harden lệnh run).
+
+**Session 16**: progress sync theo snapshot code/test ngày 2026-05-18.
+- Trạng thái phase/sprint giữ nguyên so với Session 15:
+  - Vẫn pending: Phase 2.7 bước chốt accuracy bằng ground-truth thật.
+  - Vẫn pending: Sprint H assets trình bày (screenshots, demo video, slide).
+  - Vẫn optional/pending: Playwright E2E và các sprint I/J/K.
+- Re-verify test suite:
+  - `cd backend && .\venv\Scripts\python -m pytest -q` -> **25 passed**.
+  - `cd frontend && npm.cmd test -- --run` -> **12 passed**.
+- Không có thay đổi code feature kể từ commit `ac42511`; mục tiêu hiện tại là chốt tuning/report và hoàn thiện tài liệu present.
+
+**Session 15**: sync roadmap sau khi hoàn tất và gom DB layer về `app/db`.
 - Hoàn tất roadmap database (xem `DATABASE_ROADMAP.md`): DB-A -> DB-G đều Done.
 - Gom toàn bộ DB-related code vào `backend/app/db/`:
   - ORM models: `app/db/models/*`
