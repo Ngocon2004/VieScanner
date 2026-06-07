@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import AppToaster from "@/components/ui/AppToaster";
+import { AuthProvider } from "./AuthContext";
 
 import "./globals.css";
 
@@ -22,8 +23,10 @@ export default function RootLayout({
   return (
     <html lang="vi" className="h-full antialiased">
       <body className="min-h-full flex flex-col">
-        {children}
-        <AppToaster />
+        <AuthProvider>
+          {children}
+          <AppToaster />
+        </AuthProvider>
       </body>
     </html>
   );
