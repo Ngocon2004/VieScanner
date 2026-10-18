@@ -54,6 +54,15 @@ class CCCDRecordRepository:
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def get_latest_by_scan(self, *, scan_id: str, user_id: str | None) -> CCCDRecord | None:
+        stmt = (
+            select(CCCDRecord)
+            .where(CCCDRecord.scan_id == scan_id, CCCDRecord.user_id == user_id)
+            .order_by(desc(CCCDRecord.created_at))
+            .limit(1)
+        )
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
     async def list_by_user(
         self,
         *,
@@ -75,6 +84,7 @@ class CCCDRecordRepository:
         self,
         *,
         record: CCCDRecord,
+        id_number: str | None = None,
         full_name: str | None = None,
         dob: str | None = None,
         gender: str | None = None,
@@ -83,6 +93,8 @@ class CCCDRecordRepository:
         residence: str | None = None,
         expiry_date: str | None = None,
     ) -> CCCDRecord:
+        if id_number is not None:
+            record.id_number = id_number
         if full_name is not None:
             record.full_name = full_name
         if dob is not None:
@@ -100,6 +112,12 @@ class CCCDRecordRepository:
 
         await self.session.flush()
         await self.session.refresh(record)
+        return record
+
+    async def overwrite_from_cccd(self, *, record: CCCDRecord, data: CCCDData) -> CCCDRecord:
+        await self.update_record(record=record, **data.model_dump())
+        record.expiry_date = _parse_ddmmyyyy(data.expiry_date)
+        await self.session.flush()
         return record
 
     async def delete_record(self, record: CCCDRecord) -> None:

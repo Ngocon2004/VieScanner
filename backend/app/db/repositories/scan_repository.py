@@ -1,10 +1,13 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import desc, select
+from sqlalchemy import delete, desc, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.cccd_record import CCCDRecord
+from app.db.models.correction import Correction
+from app.db.models.job import JobItem
 from app.db.models.scan import Scan, ScanStatus
 
 
@@ -15,6 +18,7 @@ class ScanRepository:
     async def create_scan(
         self,
         *,
+        id: str | None = None,
         user_id: str | None,
         request_id: str | None,
         filename: str | None,
@@ -28,10 +32,12 @@ class ScanRepository:
         error_code: str | None,
         error_message: str | None,
         duration_ms: int | None,
+        job_id: str | None = None,
     ) -> Scan:
         scan = Scan(
             user_id=user_id,
             request_id=request_id,
+            job_id=job_id,
             filename=filename,
             mime_type=mime_type,
             size_bytes=size_bytes,
@@ -44,10 +50,38 @@ class ScanRepository:
             error_message=error_message,
             duration_ms=duration_ms,
         )
+        # Cho phép pre-generate id (M4): caller tạo UUID trước để trả `scan_id`
+        # trong response rồi ghi scan ở background. None -> dùng default của model.
+        if id is not None:
+            scan.id = id
         self.session.add(scan)
         await self.session.flush()
         await self.session.refresh(scan)
         return scan
+
+    async def delete_older_than(self, cutoff: datetime) -> int:
+        """Xóa scan có `created_at < cutoff`. Trả về số scan đã xóa (M5).
+
+        Xử lý bảng con tường minh để an toàn cả khi DB không bật FK cascade
+        (vd SQLite mặc định): xóa `corrections` liên quan + gỡ liên kết
+        `cccd_records` (scan_id -> NULL) trước khi xóa scan. Caller tự commit.
+        """
+        old_ids = select(Scan.id).where(Scan.created_at < cutoff)
+        await self.session.execute(
+            delete(Correction).where(Correction.scan_id.in_(old_ids))
+        )
+        await self.session.execute(
+            update(CCCDRecord)
+            .where(CCCDRecord.scan_id.in_(old_ids))
+            .values(scan_id=None)
+        )
+        await self.session.execute(
+            update(JobItem).where(JobItem.scan_id.in_(old_ids)).values(scan_id=None)
+        )
+        result = await self.session.execute(
+            delete(Scan).where(Scan.created_at < cutoff)
+        )
+        return result.rowcount or 0
 
     async def get_by_id(self, scan_id: str) -> Scan | None:
         stmt = select(Scan).where(Scan.id == scan_id)
@@ -76,6 +110,7 @@ class ScanRepository:
         *,
         image_hash: str,
         user_id: str | None,
+        ocr_engine: str | None = None,
         ttl_seconds: int = 0,
     ) -> Scan | None:
         stmt = (
@@ -89,6 +124,10 @@ class ScanRepository:
             .order_by(desc(Scan.created_at))
             .limit(1)
         )
+        if ocr_engine:
+            # Khớp đúng nhãn engine + phiên bản pipeline: đổi engine/logic OCR thì bỏ qua kết quả cũ.
+            # Không nhận dòng ":cache" để TTL tính từ lần OCR thật, không tự gia hạn qua mỗi lần trúng cache.
+            stmt = stmt.where(Scan.ocr_engine == ocr_engine)
         if ttl_seconds > 0:
             cutoff = datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)
             stmt = stmt.where(Scan.created_at >= cutoff)
