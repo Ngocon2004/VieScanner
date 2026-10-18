@@ -1,9 +1,9 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AuthorizationError, VieScannerError
+from app.core.exceptions import AuthorizationError, NotFoundError
 from app.db.session import get_db
 from app.dependencies.auth import get_current_user, require_admin
 from app.models.cccd import ErrorResponse
@@ -35,9 +35,10 @@ async def get_scan(
     repo = ScanRepository(db)
     scan = await repo.get_by_id(scan_id)
     if scan is None:
-        raise VieScannerError("Scan not found.", code="scan_not_found")
-    if scan.user_id is not None and scan.user_id != user.id:
-        raise AuthorizationError("You cannot access this scan.", code="scan_forbidden")
+        raise NotFoundError("Không tìm thấy lượt quét.", code="scan_not_found")
+    # Scan ẩn danh (user_id None) chứa dữ liệu CCCD của người khác: chỉ admin được xem.
+    if scan.user_id != user.id and user.role != "admin":
+        raise AuthorizationError("Bạn không có quyền xem lượt quét này.", code="scan_forbidden")
     return ScanRead.model_validate(scan)
 
 
@@ -53,7 +54,7 @@ async def delete_scan(
     repo = ScanRepository(db)
     scan = await repo.get_by_id(scan_id)
     if scan is None:
-        raise VieScannerError("Scan not found.", code="scan_not_found")
+        raise NotFoundError("Không tìm thấy lượt quét.", code="scan_not_found")
     await db.delete(scan)
     await db.commit()
     return {"status": "deleted"}

@@ -1,20 +1,22 @@
-﻿"""Há»‡ thá»‘ng exception táº­p trung cho VieScanner.
+"""Hệ thống exception tập trung cho VieScanner.
 
-Má»i exception nghiá»‡p vá»¥ nÃªn káº¿ thá»«a `VieScannerError` Ä‘á»ƒ Ä‘Æ°á»£c handler
-chuyá»ƒn thÃ nh response JSON nháº¥t quÃ¡n.
+Mọi exception nghiệp vụ nên kế thừa `VieScannerError` để được handler
+chuyển thành response JSON nhất quán.
 """
 
 from __future__ import annotations
 
 from fastapi import status
 
+from app.core.config import settings
+
 
 class VieScannerError(Exception):
-    """Base exception cho toÃ n bá»™ á»©ng dá»¥ng."""
+    """Base exception cho toàn bộ ứng dụng."""
 
     status_code: int = status.HTTP_500_INTERNAL_SERVER_ERROR
     code: str = "internal_error"
-    message: str = "CÃ³ lá»—i xáº£y ra. Vui lÃ²ng thá»­ láº¡i."
+    message: str = "Có lỗi xảy ra. Vui lòng thử lại."
 
     details: list | None = None
 
@@ -34,20 +36,33 @@ class VieScannerError(Exception):
             self.details = details
 
 
+class RequestTooLargeError(VieScannerError):
+    """Tổng dung lượng request vượt `MAX_REQUEST_MB`."""
+
+    status_code = status.HTTP_413_CONTENT_TOO_LARGE
+    code = "request_too_large"
+
+    def __init__(self) -> None:
+        super().__init__(
+            f"Tổng dung lượng gửi lên vượt quá {settings.max_request_mb}MB. "
+            "Hãy chia thành nhiều lần gửi, mỗi lần ít file hơn."
+        )
+
+
 class ImageValidationError(VieScannerError):
-    """áº¢nh upload khÃ´ng há»£p lá»‡ (size, mime, magic bytes)."""
+    """Ảnh upload không hợp lệ (size, mime, magic bytes)."""
 
     status_code = status.HTTP_400_BAD_REQUEST
     code = "image_invalid"
-    message = "áº¢nh upload khÃ´ng há»£p lá»‡."
+    message = "Ảnh upload không hợp lệ."
 
 
 class OCRFailedError(VieScannerError):
-    """OCR engine xá»­ lÃ½ tháº¥t báº¡i."""
+    """OCR engine xử lý thất bại."""
 
     status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
     code = "ocr_failed"
-    message = "KhÃ´ng thá»ƒ trÃ­ch xuáº¥t thÃ´ng tin tá»« áº£nh."
+    message = "Không thể trích xuất thông tin từ ảnh."
 
 
 class ImageQualityError(VieScannerError):
@@ -59,11 +74,11 @@ class ImageQualityError(VieScannerError):
 
 
 class ExcelGenerationError(VieScannerError):
-    """Lá»—i khi táº¡o file Excel."""
+    """Lỗi khi tạo file Excel."""
 
     status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
     code = "excel_failed"
-    message = "KhÃ´ng thá»ƒ táº¡o file Excel."
+    message = "Không thể tạo file Excel."
 
 
 class AuthenticationError(VieScannerError):
@@ -71,7 +86,7 @@ class AuthenticationError(VieScannerError):
 
     status_code = status.HTTP_401_UNAUTHORIZED
     code = "auth_invalid"
-    message = "Authentication failed."
+    message = "Xác thực thất bại."
 
 
 class AuthorizationError(VieScannerError):
@@ -79,7 +94,7 @@ class AuthorizationError(VieScannerError):
 
     status_code = status.HTTP_403_FORBIDDEN
     code = "forbidden"
-    message = "You do not have permission to perform this action."
+    message = "Bạn không có quyền thực hiện thao tác này."
 
 
 class ConflictError(VieScannerError):
@@ -87,5 +102,13 @@ class ConflictError(VieScannerError):
 
     status_code = status.HTTP_409_CONFLICT
     code = "conflict"
-    message = "Conflict detected."
+    message = "Dữ liệu bị trùng hoặc xung đột."
 
+
+
+class NotFoundError(VieScannerError):
+    """Resource does not exist (or is hidden from the caller)."""
+
+    status_code = status.HTTP_404_NOT_FOUND
+    code = "not_found"
+    message = "Không tìm thấy dữ liệu."

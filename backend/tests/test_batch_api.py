@@ -7,7 +7,10 @@ from collections.abc import Generator
 import pytest
 from fastapi.testclient import TestClient
 
+import app.services.extraction as extraction
+from app.core.config import settings
 from app.models.cccd import CCCDData, CCCDExtractResponse
+from app.models.quality import QualityReport
 from app.services.ocr_engine import get_ocr_engine
 from main import app
 
@@ -112,3 +115,100 @@ def test_single_extract_rejects_low_quality_image(client: TestClient) -> None:
     assert body["code"] == "image_quality_low"
     assert body["details"]
     assert any(d["code"] == "low_resolution" for d in body["details"])
+
+
+@pytest.mark.asyncio
+async def test_assess_quality_enables_card_check_only_in_real_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observed: list[bool] = []
+
+    def fake_assess_image_quality(
+        _contents: bytes,
+        *,
+        run_card_check: bool = False,
+    ) -> QualityReport:
+        observed.append(run_card_check)
+        return QualityReport(accepted=True, score=1.0)
+
+    monkeypatch.setattr(settings, "quality_check_enabled", True)
+    monkeypatch.setattr(settings, "quality_card_check_enabled", True)
+    monkeypatch.setattr(extraction, "assess_image_quality", fake_assess_image_quality)
+
+    monkeypatch.setattr(settings, "ocr_engine", "mock")
+    await extraction.assess_quality(_FAKE_PNG)
+
+    monkeypatch.setattr(settings, "ocr_engine", "real")
+    await extraction.assess_quality(_FAKE_PNG)
+
+    assert observed == [False, True]
+
+
+class CountingEngine(DummyOCREngine):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def extract(self, image_bytes: bytes) -> CCCDExtractResponse:
+        self.calls += 1
+        return await super().extract(image_bytes)
+
+
+class CrashingEngine:
+    async def extract(self, image_bytes: bytes) -> CCCDExtractResponse:
+        raise RuntimeError("cuda driver exploded at 0xdeadbeef")
+
+
+def test_batch_runs_ocr_once_for_duplicate_images(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "ocr_result_cache_enabled", False)
+    engine = CountingEngine()
+    app.dependency_overrides[get_ocr_engine] = lambda: engine
+    try:
+        with TestClient(app) as client:
+            files = [("files", (f"{i}.png", _FAKE_PNG, "image/png")) for i in range(3)]
+            body = client.post("/api/extract-batch", files=files).json()
+    finally:
+        app.dependency_overrides.clear()
+
+    assert engine.calls == 1
+    assert [r["status"] for r in body["results"]] == ["extracted"] * 3
+    assert len({r["scan_id"] for r in body["results"]}) == 3
+
+
+def test_batch_accepts_image_with_wrong_declared_mime(client: TestClient) -> None:
+    files = [("files", ("scan.jpg", _FAKE_PNG, "application/octet-stream"))]
+    body = client.post("/api/extract-batch", files=files).json()
+    assert body["results"][0]["status"] == "extracted"
+
+
+def test_extract_crash_hides_internal_error_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "ocr_result_cache_enabled", False)
+    app.dependency_overrides[get_ocr_engine] = lambda: CrashingEngine()
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/extract", files={"file": ("a.png", _FAKE_PNG, "image/png")}
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+    body = response.json()
+    assert body["code"] == "ocr_engine_crashed"
+    assert "deadbeef" not in body["message"]
+
+
+def test_error_messages_are_valid_vietnamese(client: TestClient) -> None:
+    response = client.post("/api/export", json={"data": {"id_number": "x"}})
+    assert response.status_code == 422
+    assert response.json()["message"] == "Dữ liệu đầu vào không hợp lệ."
+
+
+@pytest.mark.parametrize(
+    ("sent", "kept"),
+    [("abc-123", True), ("x" * 100, False), ("bad\r\nInjected: 1", False)],
+)
+def test_request_id_header_is_sanitized(client: TestClient, sent: str, kept: bool) -> None:
+    response = client.get("/health", headers={"X-Request-ID": sent})
+    returned = response.headers["X-Request-ID"]
+    assert (returned == sent) is kept
+    assert len(returned) <= 36

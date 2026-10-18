@@ -1,8 +1,8 @@
 ﻿from __future__ import annotations
 
-from datetime import datetime
-
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
+
+from app.models.common import UTCDateTime
 
 
 class UserCreate(BaseModel):
@@ -24,8 +24,8 @@ class UserRead(BaseModel):
     full_name: str | None = None
     role: str
     is_active: bool
-    created_at: datetime
-    updated_at: datetime
+    created_at: UTCDateTime
+    updated_at: UTCDateTime
 
 
 class Token(BaseModel):

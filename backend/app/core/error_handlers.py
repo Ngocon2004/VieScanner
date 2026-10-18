@@ -1,11 +1,11 @@
-﻿"""Exception handlers táº­p trung cho FastAPI app.
+"""Exception handlers tập trung cho FastAPI app.
 
-Má»i exception (Ä‘Ã£ biáº¿t hoáº·c khÃ´ng) Ä‘Æ°á»£c chuyá»ƒn thÃ nh response JSON nháº¥t quÃ¡n:
+Mọi exception (đã biết hoặc không) được chuyển thành response JSON nhất quán:
 
     {
-        "code": "image_invalid",       // mÃ£ lá»—i machine-readable
-        "message": "..."                // thÃ´ng Ä‘iá»‡p tiáº¿ng Viá»‡t cho user
-        "request_id": "uuid"            // dÃ¹ng Ä‘á»ƒ khá»›p vá»›i log server
+        "code": "image_invalid",       // mã lỗi machine-readable
+        "message": "..."                // thông điệp tiếng Việt cho user
+        "request_id": "uuid"            // dùng để khớp với log server
     }
 """
 
@@ -17,7 +17,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from app.core.exceptions import VieScannerError
+from app.core.exceptions import RequestTooLargeError, VieScannerError
 from app.core.logging import logger
 
 
@@ -25,24 +25,28 @@ def _request_id(request: Request) -> str:
     return getattr(request.state, "request_id", "-")
 
 
-async def _viescanner_error_handler(request: Request, exc: VieScannerError) -> JSONResponse:
-    rid = _request_id(request)
-    logger.bind(request_id=rid).warning(
-        "{code}: {message}", code=exc.code, message=exc.message
-    )
-    content: dict = {"code": exc.code, "message": exc.message, "request_id": rid}
+def error_response(exc: VieScannerError, request_id: str) -> JSONResponse:
+    content: dict = {"code": exc.code, "message": exc.message, "request_id": request_id}
     details = getattr(exc, "details", None)
     if details:
         content["details"] = jsonable_encoder(details)
     return JSONResponse(status_code=exc.status_code, content=content)
 
 
+async def _viescanner_error_handler(request: Request, exc: VieScannerError) -> JSONResponse:
+    rid = _request_id(request)
+    logger.bind(request_id=rid).warning(
+        "{code}: {message}", code=exc.code, message=exc.message
+    )
+    return error_response(exc, rid)
+
+
 async def _validation_error_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
     rid = _request_id(request)
-    # `exc.errors()` cÃ³ thá»ƒ chá»©a ValueError/ctx khÃ´ng JSON-serializable;
-    # `jsonable_encoder` xá»­ lÃ½ cÃ¡c kiá»ƒu nÃ y thÃ nh chuá»—i.
+    # `exc.errors()` có thể chứa ValueError/ctx không JSON-serializable;
+    # `jsonable_encoder` xử lý các kiểu này thành chuỗi.
     safe_errors = jsonable_encoder(exc.errors())
     logger.bind(request_id=rid).warning(
         "validation_error: {errors}", errors=safe_errors
@@ -51,7 +55,7 @@ async def _validation_error_handler(
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content={
             "code": "validation_error",
-            "message": "Dá»¯ liá»‡u Ä‘áº§u vÃ o khÃ´ng há»£p lá»‡.",
+            "message": "Dữ liệu đầu vào không hợp lệ.",
             "details": safe_errors,
             "request_id": rid,
         },
@@ -67,13 +71,12 @@ async def _http_error_handler(
         status=exc.status_code,
         detail=exc.detail,
     )
+    # Body gửi kiểu chunked (không khai báo độ dài) vượt giới hạn: RequestBodyLimitMiddleware raise 413.
+    if exc.status_code == status.HTTP_413_CONTENT_TOO_LARGE:
+        return error_response(RequestTooLargeError(), rid)
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "code": "http_error",
-            "message": str(exc.detail),
-            "request_id": rid,
-        },
+        content={"code": "http_error", "message": str(exc.detail), "request_id": rid},
     )
 
 
@@ -84,14 +87,14 @@ async def _unhandled_error_handler(request: Request, exc: Exception) -> JSONResp
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
             "code": "internal_error",
-            "message": "CÃ³ lá»—i há»‡ thá»‘ng. Vui lÃ²ng thá»­ láº¡i sau.",
+            "message": "Có lỗi hệ thống. Vui lòng thử lại sau.",
             "request_id": rid,
         },
     )
 
 
 def register_exception_handlers(app: FastAPI) -> None:
-    """ÄÄƒng kÃ½ toÃ n bá»™ handler vÃ o FastAPI app."""
+    """Đăng ký toàn bộ handler vào FastAPI app."""
     app.add_exception_handler(VieScannerError, _viescanner_error_handler)
     app.add_exception_handler(RequestValidationError, _validation_error_handler)
     app.add_exception_handler(StarletteHTTPException, _http_error_handler)

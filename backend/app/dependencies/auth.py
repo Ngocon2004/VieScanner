@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -23,7 +23,7 @@ async def _load_user_from_credentials(
 ) -> User | None:
     if credentials is None:
         if required:
-            raise AuthenticationError("Missing bearer token.", code="auth_missing")
+            raise AuthenticationError("Bạn cần đăng nhập để dùng chức năng này.", code="auth_missing")
         return None
 
     token = credentials.credentials
@@ -32,9 +32,9 @@ async def _load_user_from_credentials(
     repo = UserRepository(db)
     user = await repo.get_by_id(payload.sub)
     if user is None:
-        raise AuthenticationError("User not found for token.", code="auth_user_not_found")
+        raise AuthenticationError("Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.", code="auth_token_invalid")
     if not user.is_active:
-        raise AuthenticationError("User is inactive.", code="auth_inactive")
+        raise AuthenticationError("Tài khoản đã bị khóa.", code="auth_inactive")
     return user
 
 

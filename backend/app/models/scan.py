@@ -1,8 +1,8 @@
 ﻿from __future__ import annotations
 
-from datetime import datetime
-
 from pydantic import BaseModel, ConfigDict
+
+from app.models.common import UTCDateTime
 
 
 class ScanListItem(BaseModel):
@@ -14,7 +14,7 @@ class ScanListItem(BaseModel):
     ocr_engine: str
     status: str
     duration_ms: int | None = None
-    created_at: datetime
+    created_at: UTCDateTime
 
 
 class ScanRead(ScanListItem):

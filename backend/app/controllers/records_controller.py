@@ -1,15 +1,16 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AuthorizationError, VieScannerError
+from app.core.exceptions import AuthorizationError, NotFoundError
 from app.db.session import get_db
 from app.dependencies.auth import get_current_user
 from app.models.cccd import CCCDData, ErrorResponse
 from app.db.models.user import User
 from app.models.record import CCCDRecordCreate, CCCDRecordRead, CCCDRecordUpdate
 from app.db.repositories.cccd_record_repository import CCCDRecordRepository
+from app.services.scan_access import attachable_scan
 
 router = APIRouter(prefix="/records")
 
@@ -43,7 +44,10 @@ async def create_record(
         residence=payload.residence,
         expiry_date=payload.expiry_date,
     )
-    record = await repo.create_from_cccd(data=cccd_data, scan_id=payload.scan_id, user_id=user.id)
+    scan = await attachable_scan(db, payload.scan_id, user.id)
+    record = await repo.create_from_cccd(
+        data=cccd_data, scan_id=scan.id if scan else None, user_id=user.id
+    )
     await db.commit()
     return CCCDRecordRead.model_validate(_to_read_payload(record))
 
@@ -58,12 +62,13 @@ async def update_record(
     repo = CCCDRecordRepository(db)
     record = await repo.get_by_id(record_id)
     if record is None:
-        raise VieScannerError("Record not found.", code="record_not_found")
+        raise NotFoundError("Không tìm thấy bản ghi.", code="record_not_found")
     if record.user_id != user.id:
-        raise AuthorizationError("You cannot update this record.", code="record_forbidden")
+        raise AuthorizationError("Bạn không có quyền với bản ghi này.", code="record_forbidden")
 
     updated = await repo.update_record(
         record=record,
+        id_number=payload.id_number,
         full_name=payload.full_name,
         dob=payload.dob,
         gender=payload.gender,
@@ -85,9 +90,9 @@ async def delete_record(
     repo = CCCDRecordRepository(db)
     record = await repo.get_by_id(record_id)
     if record is None:
-        raise VieScannerError("Record not found.", code="record_not_found")
+        raise NotFoundError("Không tìm thấy bản ghi.", code="record_not_found")
     if record.user_id != user.id:
-        raise AuthorizationError("You cannot delete this record.", code="record_forbidden")
+        raise AuthorizationError("Bạn không có quyền với bản ghi này.", code="record_forbidden")
 
     await repo.delete_record(record)
     await db.commit()
