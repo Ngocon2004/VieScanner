@@ -3,10 +3,11 @@ import path from "node:path";
 
 import { expect, test } from "@playwright/test";
 
-import { exportExcel, uploadMockImage, waitForExtractedForm } from "./helpers";
+import { exportExcel, uploadMockImages, waitForBatchResults, waitForExtractedForm } from "./helpers";
 
 const SCREENSHOT_DIR = path.resolve(
-  process.env.DOCS_SCREENSHOT_DIR ?? path.join(process.cwd(), "docs/screenshots"),
+  process.env.DOCS_SCREENSHOT_DIR ??
+    path.join(process.cwd(), "test-results/docs-screenshots"),
 );
 
 test("capture documentation screenshots", async ({ page }) => {
@@ -15,7 +16,7 @@ test("capture documentation screenshots", async ({ page }) => {
     const url = response.url();
     if (!url.includes("/api/")) return;
     const parsed = new URL(url);
-    if (!parsed.pathname.endsWith("/extract") && !parsed.pathname.endsWith("/export")) return;
+    if (!parsed.pathname.endsWith("/jobs") && !parsed.pathname.endsWith("/export-list")) return;
     const req = response.request();
     networkCalls.push({
       method: req.method(),
@@ -33,7 +34,13 @@ test("capture documentation screenshots", async ({ page }) => {
     fullPage: true,
   });
 
-  await uploadMockImage(page);
+  await uploadMockImages(page, 2);
+  await waitForBatchResults(page);
+  await page.screenshot({
+    path: path.join(SCREENSHOT_DIR, "batch-results.png"),
+    fullPage: true,
+  });
+
   await waitForExtractedForm(page);
   await page.screenshot({
     path: path.join(SCREENSHOT_DIR, "form-after-ocr.png"),

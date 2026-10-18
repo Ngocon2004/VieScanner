@@ -11,9 +11,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build:standalone": "next build && node -e \"const fs = require('fs'); fs.cpSync('public', '.next/standalone/public', {recursive: true}); fs.cpSync('.next/static', '.next/standalone/.next/static', {recursive: true});\"",
-    "test:e2e": "cross-env NEXT_PUBLIC_API_URL=http://127.0.0.1:8000/api npm run build:standalone && playwright test",
-    "test:e2e:headed": "cross-env NEXT_PUBLIC_API_URL=http://127.0.0.1:8000/api npm run build:standalone && playwright test --headed",
-    "test:e2e:docs": "cross-env NEXT_PUBLIC_API_URL=http://127.0.0.1:8000/api npm run build:standalone && playwright test e2e/docs-capture.spec.ts"
+    "test:e2e": "cross-env E2E_BACKEND_PORT=18000 E2E_FRONTEND_PORT=13000 NEXT_PUBLIC_API_URL=http://127.0.0.1:18000/api npm run build:standalone && node scripts/run-e2e.mjs",
+    "test:e2e:headed": "cross-env E2E_BACKEND_PORT=18000 E2E_FRONTEND_PORT=13000 NEXT_PUBLIC_API_URL=http://127.0.0.1:18000/api npm run build:standalone && node scripts/run-e2e.mjs --headed",
+    "test:e2e:docs": "cross-env E2E_BACKEND_PORT=18000 E2E_FRONTEND_PORT=13000 NEXT_PUBLIC_API_URL=http://127.0.0.1:18000/api DOCS_SCREENSHOT_DIR=docs/screenshots npm run build:standalone && node scripts/run-e2e.mjs e2e/docs-capture.spec.ts"
   },
   "dependencies": {
     "next": "16.2.6",
