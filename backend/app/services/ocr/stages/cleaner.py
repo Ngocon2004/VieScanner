@@ -11,6 +11,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from app.core.logging import logger
+from app.services.ocr.interfaces import OCRStageError
 
 if TYPE_CHECKING:
     import numpy as np
@@ -32,6 +33,11 @@ class MockCleaner:
 # ─────────────────────────────────────────────────────────────────────────────
 # Real – OpenCV pipeline
 # ─────────────────────────────────────────────────────────────────────────────
+
+
+def _odd_at_least(value: int, minimum: int) -> int:
+    v = max(minimum, int(value))
+    return v if v % 2 == 1 else v + 1
 
 
 class RealImageCleaner:
@@ -56,17 +62,19 @@ class RealImageCleaner:
         smooth_kernel_size: int = 5,
         clip_hist_percent: float = 1.0,
     ) -> None:
-        self.shadow_kernel_size = shadow_kernel_size
-        self.background_blur = background_blur
-        self.smooth_kernel_size = smooth_kernel_size
-        self.clip_hist_percent = clip_hist_percent
+        # Kernel lấy từ env: số chẵn/<=0 làm OpenCV raise giữa request (medianBlur, GaussianBlur
+        # chỉ nhận số lẻ) -> chuẩn hóa một lần ở đây.
+        self.shadow_kernel_size = max(1, int(shadow_kernel_size))
+        self.background_blur = _odd_at_least(background_blur, 3)
+        self.smooth_kernel_size = _odd_at_least(smooth_kernel_size, 1)
+        self.clip_hist_percent = max(0.0, min(50.0, float(clip_hist_percent)))
 
     def clean(self, image: "np.ndarray") -> "np.ndarray":
         import cv2  # type: ignore[import-untyped]
         import numpy as np
 
         if image is None or getattr(image, "size", 0) == 0:
-            raise ValueError("RealImageCleaner.clean: ảnh đầu vào rỗng.")
+            raise OCRStageError("cleaner", "Ảnh đầu vào rỗng.")
 
         cleaned = self._remove_shadow_and_enhance(image)
 

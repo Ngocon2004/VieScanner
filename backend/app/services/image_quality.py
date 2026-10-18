@@ -57,6 +57,16 @@ def _count_card_corners(image: "np.ndarray") -> int | None:
         return None
 
 
+def _has_card_outline(image: "np.ndarray") -> bool:
+    from app.services.ocr.card_geometry import find_card_quad
+
+    try:
+        return find_card_quad(image) is not None
+    except Exception as exc:  # noqa: BLE001 – lỗi OpenCV -> giữ quyết định theo YOLO.
+        logger.warning("card outline check skipped: {}", exc)
+        return False
+
+
 def assess_image_quality(
     image_bytes: bytes,
     *,
@@ -77,8 +87,17 @@ def assess_image_quality(
     if img is None or getattr(img, "size", 0) == 0:
         return _passthrough("undecodable_image")
 
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     h, w = img.shape[:2]
+    # Độ phân giải xét trên ảnh gốc; các chỉ số còn lại đo trên đúng ảnh OCR sẽ xử lý
+    # (đã resize theo OCR_MAX_IMAGE_SIDE_PX), nếu không ảnh 12MP hơi mềm bị báo mờ oan
+    # dù sau resize vẫn nét.
+    max_side = int(settings.ocr_max_image_side_px)
+    if max_side > 0 and max(h, w) > max_side:
+        scale = max_side / float(max(h, w))
+        img = cv2.resize(
+            img, (max(1, round(w * scale)), max(1, round(h * scale))), interpolation=cv2.INTER_AREA
+        )
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
     issues: list[QualityIssue] = []
     metrics: dict[str, float] = {}
@@ -166,7 +185,14 @@ def assess_image_quality(
         corners = _count_card_corners(img)
         if corners is not None:
             metrics["card_corners"] = float(corners)
-            if corners == 0:
+            # Aligner căn được theo đường viền thẻ dù YOLO không thấy góc nào: không chặn ảnh.
+            if corners == 0 and settings.ocr_aligner_contour_fallback and _has_card_outline(img):
+                issues.append(QualityIssue(
+                    code="card_partial", severity="soft",
+                    message="Không thấy rõ góc thẻ. Hãy chụp thẳng và đủ 4 góc để kết quả tốt hơn.",
+                    metric=0.0, threshold=4.0,
+                ))
+            elif corners == 0:
                 issues.append(QualityIssue(
                     code="not_cccd", severity="hard",
                     message="Không phát hiện thẻ CCCD trong ảnh. Hãy chụp đúng mặt trước thẻ, rõ cả 4 góc.",

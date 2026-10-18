@@ -90,7 +90,7 @@ async def test_pipeline_raises_when_detector_finds_no_boxes() -> None:
     with pytest.raises(OCRFailedError) as exc_info:
         await pipeline.run(_make_png_bytes())
 
-    assert exc_info.value.code == "ocr_failed"
+    assert exc_info.value.code == "ocr_detector_failed"
 
 
 @pytest.mark.asyncio
@@ -125,3 +125,44 @@ async def test_pipeline_clamps_confidence_values_to_0_1() -> None:
     assert result.confidences["id_number"] == 0.0
     assert result.confidences["full_name"] == 1.0
     assert result.confidences["dob"] == 0.0
+
+
+@pytest.mark.asyncio
+async def test_recognizer_reads_color_aligned_image_detector_reads_cleaned() -> None:
+    import cv2  # type: ignore[import-untyped]
+    import numpy as np
+
+    color = np.zeros((96, 160, 3), dtype=np.uint8)
+    color[:, :] = (255, 0, 0)
+    ok, encoded = cv2.imencode(".png", color)
+    assert ok
+    seen: dict[str, Any] = {}
+
+    class GrayCleaner:
+        def clean(self, image: Any) -> Any:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            return cv2.cvtColor(gray, cv2.COLOR_GRAY2RGB)
+
+    class SpyDetector(MockDetector):
+        def detect(self, image: Any) -> list[Any]:
+            seen["detect"] = image
+            return super().detect(image)
+
+    class SpyRecognizer(MockRecognizer):
+        def recognize(self, image: Any, boxes: list[Any]) -> list[TextLine]:
+            seen["recognize"] = image
+            return super().recognize(image, boxes)
+
+    pipeline = OCRPipeline(
+        aligner=MockAligner(),
+        cleaner=GrayCleaner(),
+        detector=SpyDetector(),
+        recognizer=SpyRecognizer(),
+        extractor=MockExtractor(),
+    )
+
+    await pipeline.run(encoded.tobytes())
+
+    assert tuple(seen["recognize"][0, 0]) == (0, 0, 255)
+    detect_px = seen["detect"][0, 0]
+    assert detect_px[0] == detect_px[1] == detect_px[2]

@@ -7,9 +7,11 @@ bởi dấu `|`:
 
 Trong đó ngày sinh / ngày cấp ở dạng `ddmmyyyy` (8 chữ số, không dấu phân cách).
 
-Module dùng `cv2.QRCodeDetector` của OpenCV (đã là dependency sẵn cho image
-quality / pipeline) nên **không thêm thư viện mới**. QR cho độ chính xác gần
-tuyệt đối với các trường nó cung cấp; pipeline OCR vẫn chạy để:
+Thẻ Căn cước mẫu 2024 dùng QR 11 trường: 7 trường đầu giống hệt mẫu trên, nên dùng chung parser.
+
+Giải mã bằng zxing-cpp; `cv2.QRCodeDetector` chỉ là dự phòng khi thiếu zxing-cpp vì trên
+63 ảnh thật zxing-cpp đọc được 10 QR CCCD, OpenCV chỉ 1 (nằm trong 10 đó) và chậm hơn ~10 lần.
+QR cho độ chính xác gần tuyệt đối với các trường nó cung cấp; pipeline OCR vẫn chạy để:
   - Bù các trường QR không có: quốc tịch, quê quán (origin), hạn dùng.
   - Làm fallback khi ảnh không có QR / QR đọc lỗi.
 
@@ -22,9 +24,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
 
 from app.core.logging import logger
+from app.services.ocr.placeholders import UNKNOWN_TEXT
 
 if TYPE_CHECKING:
     import numpy as np
@@ -32,9 +35,6 @@ if TYPE_CHECKING:
 
 _ID_NUMBER_RE = re.compile(r"^\d{12}$")
 _MIN_QR_PARTS = 6  # số CCCD..nơi thường trú; ngày cấp (phần 7) là tuỳ chọn.
-
-# Trùng placeholder của RealFieldExtractor để UX nhất quán (FE highlight đỏ).
-_UNKNOWN_PLACEHOLDER = "(không nhận dạng được)"
 
 
 @dataclass(slots=True)
@@ -68,7 +68,7 @@ class CCCDQRData:
         """
         fields = self.to_field_overrides()
         fields["nationality"] = "Việt Nam"
-        fields["origin"] = _UNKNOWN_PLACEHOLDER
+        fields["origin"] = UNKNOWN_TEXT
         return fields
 
 
@@ -134,39 +134,50 @@ def parse_cccd_qr_payload(payload: str | None) -> CCCDQRData | None:
     )
 
 
+def _first_cccd(payloads: Iterable[str]) -> CCCDQRData | None:
+    for payload in payloads:
+        parsed = parse_cccd_qr_payload(payload)
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _decode_zxing(image: "np.ndarray") -> list[str] | None:
+    """Trả list payload, hoặc None nếu thiếu zxing-cpp (để dùng OpenCV)."""
+    try:
+        import zxingcpp
+    except ImportError:
+        return None
+    return [b.text for b in zxingcpp.read_barcodes(image, formats=zxingcpp.BarcodeFormat.QRCode)]
+
+
+def _decode_opencv(image: "np.ndarray") -> list[str]:
+    import cv2  # type: ignore[import-untyped]
+
+    detector = cv2.QRCodeDetector()
+    data, _points, _straight = detector.detectAndDecode(image)
+    if data:
+        return [data]
+    ok, decoded_info, _pts, _qr = detector.detectAndDecodeMulti(image)
+    return list(decoded_info) if ok and decoded_info else []
+
+
 def read_cccd_qr(image: "np.ndarray") -> CCCDQRData | None:
-    """Detect + decode QR mặt trước CCCD từ ảnh BGR (numpy).
+    """Detect + decode QR CCCD từ ảnh BGR (numpy).
 
     Trả `CCCDQRData` nếu đọc được QR đúng định dạng CCCD, ngược lại `None`.
     """
-    try:
-        import cv2  # type: ignore[import-untyped]
-    except Exception as exc:  # noqa: BLE001 - thiếu OpenCV -> bỏ qua QR.
-        logger.debug("QR reader: OpenCV không khả dụng ({})", exc)
-        return None
-
     if image is None or getattr(image, "ndim", 0) < 2 or getattr(image, "size", 0) == 0:
         return None
 
     try:
-        detector = cv2.QRCodeDetector()
-        data, _points, _straight = detector.detectAndDecode(image)
-        parsed = parse_cccd_qr_payload(data)
-        if parsed is not None:
-            return parsed
-
-        # Fallback: ảnh nhiều mã / khó -> thử detect nhiều QR.
-        ok, decoded_info, _pts, _qr = detector.detectAndDecodeMulti(image)
-        if ok and decoded_info:
-            for decoded in decoded_info:
-                parsed = parse_cccd_qr_payload(decoded)
-                if parsed is not None:
-                    return parsed
+        payloads = _decode_zxing(image)
+        if payloads is None:
+            payloads = _decode_opencv(image)
+        return _first_cccd(payloads)
     except Exception as exc:  # noqa: BLE001 - decode lỗi -> để OCR xử lý.
         logger.debug("QR detect/decode thất bại: {}", exc)
         return None
-
-    return None
 
 
 __all__ = ["CCCDQRData", "parse_cccd_qr_payload", "read_cccd_qr"]

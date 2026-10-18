@@ -2,7 +2,8 @@
 
 - `MockAligner`: trả về ảnh gốc (dùng cho dev/test).
 - `RealCardAligner`: dùng YOLO (model_crop.pt) detect 4 góc CCCD →
-  perspective warp về ảnh thẳng. Port từ denghwee/OCR_Vietnamese_Read_CCCD
+  perspective warp về ảnh thẳng; góc thiếu/tứ giác méo thì tìm thẻ theo đường viền
+  (`card_geometry`). Port từ denghwee/OCR_Vietnamese_Read_CCCD
   với một số cải tiến:
     * Lazy-load model qua module-level cache (`_load_yolo_model`) để
       pipeline khởi tạo nhanh và share weight giữa các request.
@@ -19,6 +20,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from app.core.logging import logger
+from app.services.ocr.card_geometry import find_card_quad, is_card_like
 from app.services.ocr.interfaces import OCRStageError
 
 if TYPE_CHECKING:
@@ -86,6 +88,7 @@ class RealCardAligner:
       device:     'auto' | 'cpu' | 'cuda:0' | ...
       conf_threshold: confidence tối thiểu cho từng góc (filter noise).
       allow_estimate_one: nếu True, được phép nội suy 1 góc thiếu.
+      contour_fallback: tìm thẻ bằng đường viền khi góc YOLO thiếu hoặc tứ giác méo.
     """
 
     def __init__(
@@ -97,6 +100,7 @@ class RealCardAligner:
         conf_threshold: float = 0.25,
         allow_estimate_one: bool = True,
         retry_conf_thresholds: tuple[float, ...] = (0.15, 0.10, 0.05),
+        contour_fallback: bool = True,
     ) -> None:
         self.model_path = model_path
         self.img_size = img_size
@@ -104,6 +108,7 @@ class RealCardAligner:
         self.conf_threshold = conf_threshold
         self.allow_estimate_one = allow_estimate_one
         self.retry_conf_thresholds = retry_conf_thresholds
+        self.contour_fallback = contour_fallback
         # Pre-warm model để fail-fast nếu thiếu file (không tốn nhiều RAM).
         _load_yolo_model(self.model_path)
         logger.info(
@@ -116,38 +121,73 @@ class RealCardAligner:
         )
 
     def align(self, image: "np.ndarray") -> "np.ndarray":
+        """Ưu tiên: góc YOLO giống thẻ -> đường viền thẻ (OpenCV) -> góc YOLO dù méo -> lỗi."""
         if image is None or getattr(image, "size", 0) == 0:
             raise OCRStageError("aligner", "Ảnh đầu vào rỗng.")
 
-        tried: list[str] = []
-        for conf in self._candidate_conf_thresholds():
-            corners = self._detect_corners(image, conf_threshold=conf)
-            missing = [name for name in _CORNER_NAMES if name not in corners]
+        corners, tried = self._yolo_corners(image)
+        if corners is not None and is_card_like(self._as_quad(corners)):
+            try:
+                return self._warp_perspective(image, corners)
+            except OCRStageError as exc:  # vd 4 góc dính sát nhau -> thử đường viền.
+                tried.append(f"warp_error={exc.message}")
+                corners = None
 
-            if len(missing) == 0:
-                try:
-                    return self._warp_perspective(image, corners)
-                except OCRStageError as exc:
-                    tried.append(f"conf={conf}: warp_error={exc.message}")
-                    continue
+        if self.contour_fallback:
+            try:
+                quad = find_card_quad(image, allow_frame=True)
+            except Exception as exc:  # noqa: BLE001 – lỗi OpenCV chỉ làm mất đường dự phòng.
+                logger.warning("Aligner: tìm đường viền thẻ lỗi: {}", exc)
+                quad = None
+            if quad is not None:
+                logger.info(
+                    "Aligner: {} -> căn theo đường viền thẻ.",
+                    "tứ giác YOLO méo" if corners is not None else "YOLO không đủ góc",
+                )
+                return self._warp_perspective(
+                    image, {name: (float(x), float(y)) for name, (x, y) in zip(_CORNER_NAMES, quad)}
+                )
 
-            if len(missing) == 1 and self.allow_estimate_one:
-                estimated = self._estimate_missing_corner(corners, missing[0])
-                logger.info("Aligner: thiếu góc {} ở conf={} – đã nội suy.", missing[0], conf)
-                try:
-                    return self._warp_perspective(image, estimated)
-                except OCRStageError as exc:
-                    tried.append(f"conf={conf}: warp_error={exc.message}")
-                    continue
+        if corners is not None:
+            logger.warning("Aligner: tứ giác YOLO méo, không tìm được đường viền thẻ -> vẫn căn theo YOLO.")
+            return self._warp_perspective(image, corners)
 
-            tried.append(f"conf={conf}: missing={missing}")
-
+        # Chi tiết từng ngưỡng chỉ để debug: ghi log, không đưa vào thông báo hiển thị cho người dùng.
+        logger.warning("Aligner: không đủ 4 góc | {}", " | ".join(tried))
         raise OCRStageError(
             "aligner",
-            "Không phát hiện đủ 4 góc CCCD sau nhiều ngưỡng confidence. "
-            f"Chi tiết: {' | '.join(tried)}. "
-            "Vui lòng chụp lại ảnh sao cho thấy rõ cả 4 góc thẻ.",
+            "Không tìm thấy đủ 4 góc thẻ CCCD. Vui lòng chụp lại ảnh sao cho thấy rõ cả 4 góc thẻ.",
         )
+
+    def _yolo_corners(
+        self, image: "np.ndarray"
+    ) -> tuple[dict[str, tuple[int, int]] | None, list[str]]:
+        """4 góc lồi đầu tiên tìm được qua các ngưỡng (nội suy tối đa 1 góc), kèm log các lần thử."""
+        import cv2  # type: ignore[import-untyped]
+
+        tried: list[str] = []
+        best = self._best_corners(image)
+        for conf in self._candidate_conf_thresholds():
+            corners = {name: point for name, (score, point) in best.items() if score >= conf}
+            missing = [name for name in _CORNER_NAMES if name not in corners]
+            if len(missing) == 1 and self.allow_estimate_one:
+                corners = self._estimate_missing_corner(corners, missing[0])
+                logger.info("Aligner: thiếu góc {} ở conf={} – đã nội suy.", missing[0], conf)
+            elif missing:
+                tried.append(f"conf={conf}: missing={missing}")
+                continue
+            # YOLO gán nhầm lớp góc (hoặc nội suy sai) cho tứ giác tự cắt -> thử ngưỡng khác.
+            if not cv2.isContourConvex(self._as_quad(corners).reshape(-1, 1, 2)):
+                tried.append(f"conf={conf}: tứ giác không lồi")
+                continue
+            return corners, tried
+        return None, tried
+
+    @staticmethod
+    def _as_quad(corners: dict[str, tuple[float, float]]) -> "np.ndarray":
+        import numpy as np
+
+        return np.float32([corners[name] for name in _CORNER_NAMES])
 
     def count_corners(self, image: "np.ndarray") -> int:
         """Đếm số góc CCCD YOLO phát hiện được (0-4). Dùng cho quality gate.
@@ -157,21 +197,20 @@ class RealCardAligner:
         if image is None or getattr(image, "size", 0) == 0:
             return 0
         try:
-            corners = self._detect_corners(image, conf_threshold=self.conf_threshold)
+            return len(self._best_corners(image))
         except OCRStageError:
             return 0
-        return len(corners)
 
     # ── internals ─────────────────────────────────────────────────────────
 
-    def _detect_corners(
-        self,
-        image: "np.ndarray",
-        *,
-        conf_threshold: float | None = None,
-    ) -> dict[str, tuple[int, int]]:
-        """Run YOLO → return dict {corner_name: (cx, cy)} với best confidence."""
-        conf = self.conf_threshold if conf_threshold is None else conf_threshold
+    def _best_corners(self, image: "np.ndarray") -> dict[str, tuple[float, tuple[int, int]]]:
+        """YOLO 1 lần ở ngưỡng thấp nhất -> {góc: (độ tin cậy, tâm)} của box tốt nhất mỗi góc.
+
+        Lọc theo từng ngưỡng sau đó cho kết quả y hệt chạy lại YOLO ở mỗi ngưỡng (NMS theo lớp không để
+        box điểm thấp loại box điểm cao), trước đây tốn tới 4 lần chạy cho ảnh khó (2.7 lần/thẻ ở cổng
+        chất lượng + 2.2 lần ở aligner, đo trên 61 thẻ thật).
+        """
+        conf = min(self._candidate_conf_thresholds())
         model = _load_yolo_model(self.model_path)
         try:
             results = model.predict(
@@ -199,7 +238,7 @@ class RealCardAligner:
         xyxy_arr = boxes.xyxy.cpu().numpy()
         names = model.names  # dict[int, str]
 
-        corner_points: dict[str, tuple[int, int]] = {}
+        corner_points: dict[str, tuple[float, tuple[int, int]]] = {}
         for corner in _CORNER_NAMES:
             indices = [i for i, c in enumerate(cls_arr) if names[int(c)] == corner]
             if not indices:
@@ -208,7 +247,7 @@ class RealCardAligner:
             best = max(indices, key=lambda i: float(conf_arr[i]))
             x1, y1, x2, y2 = xyxy_arr[best]
             cx, cy = int((x1 + x2) / 2), int((y1 + y2) / 2)
-            corner_points[corner] = (cx, cy)
+            corner_points[corner] = (float(conf_arr[best]), (cx, cy))
         return corner_points
 
     def _candidate_conf_thresholds(self) -> tuple[float, ...]:
@@ -266,6 +305,13 @@ class RealCardAligner:
             corners["bot_right"],
             corners["bot_left"],
         ])
+        # YOLO gán nhầm lớp góc (hoặc nội suy góc thiếu sai) cho tứ giác tự cắt -> warp ra ảnh
+        # méo vô nghĩa mà không báo lỗi; coi là lỗi để aligner thử ngưỡng khác.
+        if not cv2.isContourConvex(pts_src.reshape(-1, 1, 2)):
+            raise OCRStageError(
+                "aligner",
+                "4 góc phát hiện không tạo thành tứ giác lồi (nhãn góc bị nhầm).",
+            )
 
         # Width = max(top, bottom); Height = max(left, right). Tránh squash.
         width = int(max(

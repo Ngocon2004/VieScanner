@@ -39,6 +39,9 @@ class BBox:
     xmax: int
     ymax: int
     confidence: float = 1.0
+    # 4 góc (trên-trái, trên-phải, dưới-phải, dưới-trái) của dòng chữ nghiêng: recognizer cắt xoay theo
+    # tứ giác này thay vì hình chữ nhật thẳng (lẫn chữ dòng bên cạnh). None = cắt thẳng.
+    quad: tuple[tuple[float, float], ...] | None = None
 
     @property
     def width(self) -> int:
@@ -59,7 +62,11 @@ class TextLine:
 
     text: str
     bbox: BBox
-    recognizer_confidence: float = 1.0
+    # None = recognizer không cung cấp xác suất (VietOCR beamsearch), KHÁC với 0 = chắc chắn sai.
+    recognizer_confidence: float | None = 1.0
+    # Xác suất từng ký tự, cùng độ dài với `text`. Trung bình cả dòng che mất 1 chữ đọc sai dấu
+    # ("Đinh" -> "Đỉnh" vẫn ~0.9); extractor dùng chữ yếu nhất để cảnh báo. None = không có.
+    char_confidences: tuple[float, ...] | None = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────

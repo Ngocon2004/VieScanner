@@ -65,6 +65,18 @@ class MockDetector:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+def ensure_cuda_libs_loaded() -> None:
+    """Nạp torch trước paddle để paddle-gpu dùng chung CUDA/cuDNN DLL đi kèm torch.
+
+    paddlepaddle-gpu được cài `--no-deps` (bỏ ~1GB gói nvidia-* trùng với torch); thiếu bước này
+    paddle-gpu báo không tìm thấy cuDNN trên Windows. Bản paddle CPU không bị ảnh hưởng.
+    """
+    try:
+        import torch  # noqa: F401  # type: ignore[import-untyped]
+    except ImportError:
+        pass
+
+
 @lru_cache(maxsize=2)
 def _load_paddle_detector(model_name: str, device: str) -> Any:
     """Load PaddleOCR TextDetection 1 lần / process. Cache theo (model, device).
@@ -72,6 +84,7 @@ def _load_paddle_detector(model_name: str, device: str) -> Any:
     Lần đầu sẽ auto-download model (~5MB mobile / ~84MB server).
     """
     # Import muộn để mock pipeline không phụ thuộc paddle.
+    ensure_cuda_libs_loaded()
     from paddleocr import TextDetection  # type: ignore[import-untyped]
 
     logger.info(
@@ -87,10 +100,14 @@ def _to_paddle_device(device: str) -> str:
     d = device.lower()
     if d in ("auto",):
         # PaddleOCR sẽ tự chọn nếu không pass device. Ta vẫn explicit để rõ.
+        ensure_cuda_libs_loaded()
         try:
             import paddle  # type: ignore[import-untyped]
-            return "gpu" if paddle.is_compiled_with_cuda() else "cpu"
-        except ImportError:
+
+            # Bản build có CUDA vẫn có thể chạy trên máy không có GPU -> phải đếm thiết bị thật.
+            has_gpu = paddle.is_compiled_with_cuda() and paddle.device.cuda.device_count() > 0
+            return "gpu" if has_gpu else "cpu"
+        except Exception:  # noqa: BLE001 – thiếu paddle/driver -> CPU.
             return "cpu"
     if d.startswith("cuda"):
         # cuda:0 → gpu:0; cuda → gpu
@@ -172,7 +189,8 @@ class RealTextDetector:
         for res in results:
             res_dict = self._extract_res_dict(res)
             polys = res_dict.get("dt_polys")
-            scores = res_dict.get("dt_scores") or []
+            raw_scores = res_dict.get("dt_scores")
+            scores = [] if raw_scores is None else list(raw_scores)
             if polys is None or len(polys) == 0:
                 continue
             polys_arr = np.asarray(polys)
@@ -192,12 +210,9 @@ class RealTextDetector:
                 conf = float(scores[idx]) if idx < len(scores) else 1.0
                 if conf < self.conf_threshold:
                     continue
-                all_boxes.append(BBox(xmin, ymin, xmax, ymax, conf))
+                all_boxes.append(BBox(xmin, ymin, xmax, ymax, conf, _tilted_quad(quad, self.padding)))
 
-        # Sort top-to-bottom rồi left-to-right – thuận với reading order CCCD.
-        # Group dòng bằng overlap y: 2 box cùng dòng nếu |center_y_a - center_y_b| < median_h*0.5.
-        all_boxes.sort(key=lambda b: (b.center_y, b.xmin))
-        return all_boxes
+        return _reading_order(all_boxes)
 
     @staticmethod
     def _extract_res_dict(res: Any) -> dict:
@@ -215,6 +230,50 @@ class RealTextDetector:
             return res.get("res", res)
         # Fallback: best-effort
         return {}
+
+
+# Chỉ cắt xoay dòng nghiêng vừa phải. Đo trên 61 thẻ thật (đáp án QR + danh mục hành chính): CER địa chỉ
+# 72.7% -> 47.4%, phần địa chỉ khớp danh mục 113 -> 124, không mất trường nào. Khung nghiêng > 10° thường
+# là khung phát hiện sai chéo qua nhiều dòng: cắt xoay đọc ra rác nên giữ cắt thẳng.
+_ROTATE_MIN_DEG = 2.0
+_ROTATE_MAX_DEG = 10.0
+
+
+def _tilted_quad(quad: Any, padding: int) -> tuple[tuple[float, float], ...] | None:
+    """Hình chữ nhật xoay nhỏ nhất bao dòng chữ (nới `padding` mỗi phía) nếu dòng nghiêng trong khoảng cần xoay."""
+    import cv2  # type: ignore[import-untyped]
+    import numpy as np
+
+    pts = np.asarray(quad, dtype=np.float32)
+    top = pts[1] - pts[0]
+    angle = abs(float(np.degrees(np.arctan2(top[1], top[0]))))
+    if not _ROTATE_MIN_DEG < min(angle, 180 - angle) <= _ROTATE_MAX_DEG:
+        return None
+    (cx, cy), (w, h), rot = cv2.minAreaRect(pts)
+    corners = sorted(cv2.boxPoints(((cx, cy), (w + 2 * padding, h + 2 * padding), rot)).tolist())
+    # Xếp góc theo tọa độ (2 điểm trái/phải, rồi trên/dưới) thay vì góc quay: OpenCV đổi quy ước góc
+    # của RotatedRect giữa các phiên bản.
+    left, right = sorted(corners[:2], key=lambda p: p[1]), sorted(corners[2:], key=lambda p: p[1])
+    return tuple((float(x), float(y)) for x, y in (left[0], right[0], right[1], left[1]))
+
+
+def _reading_order(boxes: list[BBox]) -> list[BBox]:
+    """Sắp box theo thứ tự đọc: gom theo hàng rồi trái -> phải trong từng hàng.
+
+    Sort thuần theo center_y làm 2 box cùng hàng (vd "Giới tính: Nam" và "Quốc tịch: ...")
+    đảo thứ tự khi ảnh hơi nghiêng; extractor dựa vào "dòng kế tiếp" nên sẽ lấy nhầm giá trị.
+    """
+    if len(boxes) < 2:
+        return list(boxes)
+    heights = sorted(b.height for b in boxes)
+    row_tolerance = max(1, heights[len(heights) // 2] // 2)
+    rows: list[list[BBox]] = []
+    for box in sorted(boxes, key=lambda b: b.center_y):
+        if rows and abs(box.center_y - rows[-1][-1].center_y) <= row_tolerance:
+            rows[-1].append(box)
+        else:
+            rows.append([box])
+    return [box for row in rows for box in sorted(row, key=lambda b: b.xmin)]
 
 
 __all__ = ["MockDetector", "RealTextDetector"]

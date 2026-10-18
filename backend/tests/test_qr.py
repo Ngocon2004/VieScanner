@@ -112,6 +112,42 @@ def test_read_qr_on_invalid_input_returns_none() -> None:
     assert read_cccd_qr(None) is None  # type: ignore[arg-type]
 
 
+def _qr_photo(payload: str) -> Any:
+    import cv2  # type: ignore[import-untyped]
+    import numpy as np
+    import zxingcpp
+
+    barcode = zxingcpp.create_barcode(payload, zxingcpp.BarcodeFormat.QRCode)
+    code = np.array(zxingcpp.write_barcode_to_image(barcode, scale=6))
+    photo = np.full((code.shape[0] + 200, code.shape[1] + 300), 255, dtype=np.uint8)
+    photo[100 : 100 + code.shape[0], 150 : 150 + code.shape[1]] = code
+    return cv2.cvtColor(photo, cv2.COLOR_GRAY2BGR)
+
+
+def test_read_qr_decodes_cccd_2021_payload() -> None:
+    data = read_cccd_qr(_qr_photo(_VALID_PAYLOAD))
+    assert data is not None
+    assert data.id_number == "012345678901"
+    assert data.full_name == "NGUYỄN VĂN A"
+
+
+def test_read_qr_decodes_can_cuoc_2024_payload_with_11_parts() -> None:
+    data = read_cccd_qr(_qr_photo(_VALID_PAYLOAD + "||||"))
+    assert data is not None
+    assert data.dob == "01/01/1990"
+    assert data.issue_date == "15/08/2021"
+
+
+def test_read_qr_falls_back_to_opencv_without_zxing(monkeypatch: pytest.MonkeyPatch) -> None:
+    from app.services.ocr import qr as qr_module
+
+    monkeypatch.setattr(qr_module, "_decode_zxing", lambda _img: None)
+    monkeypatch.setattr(qr_module, "_decode_opencv", lambda _img: ["rác", _VALID_PAYLOAD])
+    data = read_cccd_qr(_qr_photo("bất kỳ"))
+    assert data is not None
+    assert data.id_number == "012345678901"
+
+
 # ── Pipeline integration ──────────────────────────────────────────────────────
 
 

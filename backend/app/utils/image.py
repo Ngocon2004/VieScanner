@@ -1,33 +1,59 @@
-"""Tiện ích validate file ảnh upload.
-
-Kiểm tra:
-- Kích thước (so với `settings.max_upload_size_bytes`).
-- MIME type theo header `Content-Type`.
-- Magic bytes thực tế trong nội dung file (tránh giả mạo extension/MIME).
-"""
+"""Tiện ích nhận và validate file ảnh upload."""
 
 from __future__ import annotations
+
+import os
+
+from fastapi import UploadFile
 
 from app.core.config import settings
 from app.core.exceptions import ImageValidationError
 
 
-# Mapping: MIME type được phép -> tuple các signature (magic bytes) hợp lệ.
-_MAGIC_BYTES: dict[str, tuple[bytes, ...]] = {
-    "image/jpeg": (b"\xff\xd8\xff",),
-    "image/png": (b"\x89PNG\r\n\x1a\n",),
-    # WEBP: "RIFF????WEBP" – ta check prefix RIFF và chuỗi WEBP ở offset 8.
-    "image/webp": (b"RIFF",),
-}
+__all__ = [
+    "ImageValidationError",
+    "detect_image_mime",
+    "read_upload_limited",
+    "safe_upload_filename",
+    "validate_image_bytes",
+]
+
+_MAX_FILENAME_LEN = 255
 
 
-__all__ = ["ImageValidationError", "validate_image_bytes"]
+def detect_image_mime(data: bytes) -> str | None:
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+async def read_upload_limited(file: UploadFile) -> bytes:
+    # Đọc tối đa giới hạn + 1 byte: file quá lớn bị chặn mà không phải nạp hết vào RAM.
+    data = await file.read(settings.max_upload_size_bytes + 1)
+    if len(data) > settings.max_upload_size_bytes:
+        raise ImageValidationError(
+            f"Kích thước file vượt quá {settings.max_upload_size_mb}MB."
+        )
+    return data
+
+
+def safe_upload_filename(filename: str | None) -> str | None:
+    if not filename:
+        return None
+    name = os.path.basename(filename.replace("\\", "/")).strip()
+    name = "".join(ch for ch in name if ch.isprintable())
+    return name[-_MAX_FILENAME_LEN:] or None
 
 
 def validate_image_bytes(content_type: str | None, data: bytes) -> str:
-    """Validate ảnh upload.
+    """Trả về MIME thật của ảnh, xác định từ magic bytes.
 
-    Trả về MIME type đã được xác nhận. Raise `ImageValidationError` nếu không hợp lệ.
+    Không tin `Content-Type` do client khai báo (trình duyệt/kéo-thả có thể gửi rỗng
+    hoặc sai); quyết định dựa trên nội dung file và danh sách `ALLOWED_MIME_TYPES_RAW`.
     """
     if not data:
         raise ImageValidationError("File ảnh rỗng.")
@@ -37,18 +63,10 @@ def validate_image_bytes(content_type: str | None, data: bytes) -> str:
             f"Kích thước file vượt quá {settings.max_upload_size_mb}MB."
         )
 
-    if not content_type or content_type not in settings.allowed_mime_types:
+    detected = detect_image_mime(data)
+    if detected is None or detected not in settings.allowed_mime_types:
         allowed = ", ".join(settings.allowed_mime_types)
         raise ImageValidationError(
             f"Loại file '{content_type or 'unknown'}' không được hỗ trợ. Chỉ chấp nhận: {allowed}."
         )
-
-    signatures = _MAGIC_BYTES.get(content_type, ())
-    if not any(data.startswith(sig) for sig in signatures):
-        raise ImageValidationError("Nội dung file không khớp với loại ảnh khai báo.")
-
-    # WEBP cần check thêm chuỗi 'WEBP' ở offset 8
-    if content_type == "image/webp" and (len(data) < 12 or data[8:12] != b"WEBP"):
-        raise ImageValidationError("File WEBP không hợp lệ.")
-
-    return content_type
+    return detected
