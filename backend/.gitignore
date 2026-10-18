@@ -83,3 +83,6 @@ tests/fixtures/cccd_samples/*
 
 # OS
 Thumbs.db
+
+# Job temp files (CCCD images, PII)
+tmp/

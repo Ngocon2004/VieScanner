@@ -1,0 +1,6 @@
+# Thư viện cho script chuẩn bị dữ liệu, chạy 1 lần trên máy người phát triển.
+# App (server, Docker) KHÔNG cần các gói này: không cài chung với requirements.txt.
+#   pip install -r requirements-tools.txt
+
+# Đọc bản đồ OpenStreetMap định dạng .osm.pbf (pyosmium) để trích danh mục tên đường.
+osmium==4.3.1

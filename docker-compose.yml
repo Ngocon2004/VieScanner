@@ -7,7 +7,12 @@ services:
     environment:
       OCR_ENGINE: mock
       AUTH_REQUIRED: "false"
-      DATABASE_URL: sqlite+aiosqlite:///./viescanner.db
+      # DB và ảnh tạm của job phải nằm trên volume, nếu không mỗi lần build lại container là mất dữ liệu.
+      DATABASE_URL: sqlite+aiosqlite:////app/data/viescanner.db
+      JOB_TMP_DIR: /app/data/tmp/jobs
+      JWT_SECRET: ${JWT_SECRET:-}
+    volumes:
+      - backend-data:/app/data
     expose:
       - "8000"
 
@@ -30,3 +35,6 @@ services:
       - "80:80"
     volumes:
       - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+
+volumes:
+  backend-data:

@@ -10,3 +10,6 @@ weights/
 scripts/eval_results*.json
 scripts/tune_results*.json
 scripts/ground_truth*.json
+
+# Job temp files (CCCD images, PII)
+tmp/
