@@ -79,14 +79,32 @@ export default function CCCDForm({
   exportError = null,
 }: CCCDFormProps) {
   const [formData, setFormData] = useState<CCCDData>(initialData);
+  const [reviewed, setReviewed] = useState<ReadonlySet<keyof CCCDData>>(new Set());
   const inputRefs = useRef<
     Partial<Record<keyof CCCDData, HTMLInputElement | null>>
   >({});
+  const autoFocusedRef = useRef(false);
+  const programmaticFocusRef = useRef<keyof CCCDData | null>(null);
 
-  const fieldErrors = useMemo(() => getFieldErrors(formData), [formData]);
+  // Trường OCR không đọc được mang giá trị giữ chỗ hợp lệ (vd 01/01/2000, "Nam") với confidence 0:
+  // bắt người dùng sửa hoặc xác nhận, nếu không file Excel chứa dữ liệu bịa trông như thật.
+  const fieldErrors = useMemo(() => {
+    const errors = getFieldErrors(formData);
+    for (const { name } of CCCD_FIELDS) {
+      const unread = confidences[name] === 0 && formData[name] === initialData[name];
+      if (unread && !reviewed.has(name) && !errors[name]) {
+        errors[name] = "Không đọc được trường này, hãy nhập hoặc kiểm tra lại";
+      }
+    }
+    return errors;
+  }, [formData, confidences, initialData, reviewed]);
   const hasValidationErrors = Object.keys(fieldErrors).length > 0;
 
   useEffect(() => {
+    // Chỉ focus 1 lần khi mở form: khi job còn chạy, mỗi lần poll tạo object confidences mới
+    // và sẽ kéo con trỏ khỏi ô người dùng đang gõ.
+    if (autoFocusedRef.current) return;
+    autoFocusedRef.current = true;
     const lowest = CCCD_FIELDS.map((field) => ({
       name: field.name,
       confidence: confidences[field.name],
@@ -98,6 +116,7 @@ export default function CCCDForm({
       .sort((a, b) => a.confidence - b.confidence)[0];
 
     if (lowest && lowest.confidence < 0.7) {
+      programmaticFocusRef.current = lowest.name;
       inputRefs.current[lowest.name]?.focus();
     }
   }, [confidences]);
@@ -105,6 +124,14 @@ export default function CCCDForm({
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name as keyof CCCDData]: value }));
+  };
+
+  const markReviewed = (name: keyof CCCDData) => {
+    if (programmaticFocusRef.current === name) {
+      programmaticFocusRef.current = null;
+      return;
+    }
+    setReviewed((prev) => (prev.has(name) ? prev : new Set(prev).add(name)));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -163,6 +190,10 @@ export default function CCCDForm({
                 name={field.name}
                 value={value ?? ""}
                 onChange={handleChange}
+                onBlur={() => markReviewed(field.name)}
+                onMouseDown={() => {
+                  programmaticFocusRef.current = null;
+                }}
                 placeholder={field.placeholder}
                 aria-invalid={Boolean(fieldError)}
                 aria-describedby={

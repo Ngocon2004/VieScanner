@@ -2,8 +2,8 @@
 
 import { useCallback, useState } from "react";
 
-import { APIError, exportToExcel } from "@/lib/api";
-import type { CCCDData } from "@/lib/schemas";
+import { APIError, exportListToExcel } from "@/lib/api";
+import type { ExportListRow } from "@/lib/cccdList";
 
 interface UseExportExcelState {
   loading: boolean;
@@ -12,14 +12,10 @@ interface UseExportExcelState {
 }
 
 interface UseExportExcel extends UseExportExcelState {
-  exportData: (data: CCCDData, scanId?: string) => Promise<void>;
+  exportRows: (rows: ExportListRow[]) => Promise<boolean>;
   resetError: () => void;
 }
 
-/**
- * Hook quản lý thao tác xuất Excel (download). Không lưu data vì thao tác là
- * one-shot side-effect (trigger download browser); chỉ track loading/error.
- */
 export function useExportExcel(): UseExportExcel {
   const [state, setState] = useState<UseExportExcelState>({
     loading: false,
@@ -27,15 +23,16 @@ export function useExportExcel(): UseExportExcel {
     successCount: 0,
   });
 
-  const exportData = useCallback(async (data: CCCDData, scanId?: string) => {
+  const exportRows = useCallback(async (rows: ExportListRow[]) => {
     setState((prev) => ({ ...prev, loading: true, error: null }));
     try {
-      await exportToExcel(data, scanId);
+      await exportListToExcel(rows);
       setState((prev) => ({
         loading: false,
         error: null,
         successCount: prev.successCount + 1,
       }));
+      return true;
     } catch (err) {
       const error =
         err instanceof APIError
@@ -46,6 +43,7 @@ export function useExportExcel(): UseExportExcel {
               status: 0,
             });
       setState((prev) => ({ ...prev, loading: false, error }));
+      return false;
     }
   }, []);
 
@@ -53,5 +51,5 @@ export function useExportExcel(): UseExportExcel {
     setState((prev) => ({ ...prev, error: null }));
   }, []);
 
-  return { ...state, exportData, resetError };
+  return { ...state, exportRows, resetError };
 }

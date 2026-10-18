@@ -1,5 +1,6 @@
 "use client";
 
+import { laplacianVariance, toLuma } from "@/lib/frameQuality";
 import type { QualityIssue, QualityReport } from "@/lib/schemas";
 
 /**
@@ -21,6 +22,12 @@ const GLARE_SOFT = 0.12;
 
 // Mẫu nhỏ để tính brightness/glare nhanh (không cần full-res).
 const SAMPLE_MAX_SIDE = 256;
+// Độ nét phải đo ở đúng độ phân giải backend xử lý (OCR_MAX_IMAGE_SIDE_PX): thu nhỏ ảnh làm
+// ảnh mờ trông nét. Trên 63 ảnh thật, Laplacian vùng giữa 60% tương quan hạng 0.91 với
+// blur_var của backend và ngưỡng 100 không cảnh báo oan ảnh nào.
+const BLUR_MAX_SIDE = 2000;
+const BLUR_CENTER_CROP = 0.6;
+const BLUR_SOFT = 100;
 
 interface LoadedImage {
   source: CanvasImageSource;
@@ -54,6 +61,22 @@ interface ImageStats {
   height: number;
   brightness: number;
   glare: number;
+  sharpness: number | null;
+}
+
+function centerSharpness(source: CanvasImageSource, width: number, height: number): number | null {
+  const scale = Math.min(1, BLUR_MAX_SIDE / Math.max(width, height, 1));
+  const sw = width * BLUR_CENTER_CROP;
+  const sh = height * BLUR_CENTER_CROP;
+  const dw = Math.max(3, Math.round(sw * scale));
+  const dh = Math.max(3, Math.round(sh * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = dw;
+  canvas.height = dh;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.drawImage(source, (width - sw) / 2, (height - sh) / 2, sw, sh, 0, 0, dw, dh);
+  return laplacianVariance(toLuma(ctx.getImageData(0, 0, dw, dh).data), dw, dh);
 }
 
 async function analyzeImage(file: File): Promise<ImageStats> {
@@ -83,11 +106,13 @@ async function analyzeImage(file: File): Promise<ImageStats> {
       lumaSum += luma;
       if (luma >= 250) nearWhite += 1;
     }
+    const tooSmall = Math.min(width, height) < MIN_SIDE_HARD;
     return {
       width,
       height,
       brightness: pixels > 0 ? lumaSum / pixels : 0,
       glare: pixels > 0 ? nearWhite / pixels : 0,
+      sharpness: tooSmall ? null : centerSharpness(loaded.source, width, height),
     };
   } finally {
     loaded.close();
@@ -159,6 +184,14 @@ export async function precheckImageQuality(file: File): Promise<QualityReport> {
     });
   }
 
+  if (stats.sharpness !== null && stats.sharpness < BLUR_SOFT) {
+    issues.push({
+      code: "blur", severity: "soft",
+      message: "Ảnh có thể bị mờ, chữ trên thẻ có thể đọc sai.",
+      metric: Math.round(stats.sharpness), threshold: BLUR_SOFT,
+    });
+  }
+
   const accepted = !issues.some((i) => i.severity === "hard");
   return {
     accepted,
@@ -168,6 +201,7 @@ export async function precheckImageQuality(file: File): Promise<QualityReport> {
       min_side_px: minSide,
       brightness: Math.round(stats.brightness),
       glare_ratio: Number(stats.glare.toFixed(4)),
+      ...(stats.sharpness !== null ? { blur_var: Math.round(stats.sharpness) } : {}),
     },
   };
 }

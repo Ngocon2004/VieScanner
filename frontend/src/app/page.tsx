@@ -1,15 +1,19 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 
-import CCCDForm from "@/components/form/CCCDForm";
 import ImageUpload from "@/components/upload/ImageUpload";
+import CameraScanner from "@/components/scan/CameraScanner";
 import BatchResultPanel from "@/components/batch/BatchResultPanel";
+import CCCDListTable from "@/components/list/CCCDListTable";
 import Navbar from "@/components/Navbar";
 import { useBatchExtract } from "@/hooks/useBatchExtract";
+import { useCccdList } from "@/hooks/useCccdList";
 import { useExportExcel } from "@/hooks/useExportExcel";
+import { getOcrEngine, type JobSource } from "@/lib/api";
+import { rowFromResult, toExportRows } from "@/lib/cccdList";
 import { useAuth } from "./AuthContext";
 
 function BatchSkeleton() {
@@ -29,12 +33,46 @@ export default function Home() {
   const { user, loading: authLoading } = useAuth();
   const batch = useBatchExtract();
   const exporter = useExportExcel();
+  const list = useCccdList();
+  const { addRows } = list;
+  const importedRef = useRef<Set<string>>(new Set());
+  const [uploadKey, setUploadKey] = useState(0);
+  const [inputMode, setInputMode] = useState<JobSource>("upload");
+  const [ocrEngine, setOcrEngine] = useState<string | null>(null);
 
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    void getOcrEngine(controller.signal).then(setOcrEngine);
+    return () => controller.abort();
+  }, []);
 
   const summaryTokenRef = useRef<string | null>(null);
   const batchErrorTokenRef = useRef<string | null>(null);
   const exportErrorTokenRef = useRef<string | null>(null);
+
+  // Ảnh trích xuất xong được thêm ngay vào danh sách (mỗi ảnh 1 lần), kể cả khi job còn đang chạy.
+  useEffect(() => {
+    if (!batch.jobId) return;
+    const fresh = batch.items.filter(
+      (item) =>
+        item.status === "extracted" &&
+        item.data &&
+        !importedRef.current.has(`${batch.jobId}:${item.originalIndex}`),
+    );
+    if (fresh.length === 0) return;
+    for (const item of fresh) importedRef.current.add(`${batch.jobId}:${item.originalIndex}`);
+    addRows(
+      fresh.map((item) =>
+        rowFromResult(
+          item.data!,
+          item.confidences,
+          item.scanId,
+          item.filename,
+          (item.quality?.issues ?? []).map((issue) => issue.code),
+        ),
+      ),
+    );
+  }, [batch.jobId, batch.items, addRows]);
 
   // Reset token tóm tắt khi bắt đầu lần xử lý mới.
   useEffect(() => {
@@ -49,10 +87,10 @@ export default function Home() {
     summaryTokenRef.current = token;
 
     const extractedCount = batch.items.filter((i) => i.status === "extracted").length;
-    const needsReview = batch.items.length - extractedCount;
+    const needsReview = batch.rejectedCount;
     if (extractedCount > 0) {
       toast.success("Hoàn tất xử lý", {
-        description: `${extractedCount} ảnh trích xuất thành công, ${needsReview} ảnh cần xem lại.`,
+        description: `${extractedCount} ảnh đã thêm vào danh sách, ${needsReview} ảnh cần chụp lại.`,
       });
     } else {
       toast.error("Không có ảnh đạt tiêu chuẩn", {
@@ -98,31 +136,14 @@ export default function Home() {
     });
   }, [exporter.successCount]);
 
-  const handleImagesSelect = (files: File[]) => {
-    setSelectedIndex(null);
-    void batch.run(files);
+  const handleImagesSelect = (files: File[], source: JobSource = "upload") => {
+    void batch.run(files, source);
   };
 
   const handleReset = () => {
-    setSelectedIndex(null);
+    setUploadKey((k) => k + 1);
     batch.reset();
   };
-
-  // Mặc định chọn ảnh đạt đầu tiên; user có thể bấm chọn ảnh khác (derived state,
-  // tránh setState trong effect).
-  const firstExtractedIndex = useMemo(() => {
-    const found = batch.items.find((i) => i.status === "extracted");
-    return found ? found.originalIndex : null;
-  }, [batch.items]);
-
-  const effectiveIndex = selectedIndex ?? firstExtractedIndex;
-
-  const selectedItem =
-    effectiveIndex === null
-      ? null
-      : batch.items.find(
-          (i) => i.originalIndex === effectiveIndex && i.status === "extracted" && i.data,
-        ) ?? null;
 
   if (authLoading) {
     return (
@@ -136,11 +157,18 @@ export default function Home() {
     <div className="min-h-screen flex flex-col bg-gray-100">
       <Navbar />
 
-      <main className="flex-grow container mx-auto px-4 py-8 max-w-4xl">
+      <main className="flex-grow container mx-auto px-4 py-8 max-w-6xl">
         {!user && (
           <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-sm flex flex-col sm:flex-row justify-between items-center gap-2">
             <p>Đăng nhập để lưu lịch sử scan và quản lý bản ghi CCCD.</p>
             <Link href="/login" className="font-bold underline whitespace-nowrap">Đăng nhập ngay</Link>
+          </div>
+        )}
+
+        {ocrEngine === "mock" && (
+          <div role="alert" className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+            <p className="font-semibold">Server đang chạy chế độ thử (OCR_ENGINE=mock)</p>
+            <p>Kết quả quét là dữ liệu mẫu cố định, không đọc từ ảnh. Đặt OCR_ENGINE=real cho backend để đọc CCCD thật.</p>
           </div>
         )}
 
@@ -150,18 +178,76 @@ export default function Home() {
               Trích xuất thông tin CCCD
             </h1>
             <p className="max-w-xl text-sm italic text-gray-600 sm:text-base">
-              Tải lên một hoặc nhiều ảnh mặt trước. Hệ thống tự lọc ảnh đạt/không đạt tiêu chuẩn rồi trích xuất.
+              Tải ảnh/PDF hoặc quét bằng camera mặt trước CCCD. Hệ thống tự lọc ảnh đạt/không đạt tiêu chuẩn rồi trích xuất.
             </p>
           </header>
 
           <section className="w-full rounded-xl border border-gray-200 bg-white p-4 shadow-lg sm:p-8">
-            <h2 className="mb-4 text-xl font-semibold text-gray-700 sm:mb-6 sm:text-2xl">
-              Bước 1: Tải ảnh thẻ
-            </h2>
-            <ImageUpload
-              onImagesSelect={handleImagesSelect}
-              isLoading={batch.loading}
-            />
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 sm:mb-6">
+              <h2 className="text-xl font-semibold text-gray-700 sm:text-2xl">
+                Bước 1: Đưa ảnh thẻ vào
+              </h2>
+              <div role="tablist" className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1 text-sm">
+                {(
+                  [
+                    ["upload", "Tải file"],
+                    ["camera", "Quét camera"],
+                  ] as const
+                ).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="tab"
+                    aria-selected={inputMode === mode}
+                    onClick={() => setInputMode(mode)}
+                    disabled={batch.loading}
+                    className={`rounded-md px-3 py-1.5 font-medium ${
+                      inputMode === mode ? "bg-white text-blue-700 shadow" : "text-gray-600"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {inputMode === "upload" ? (
+              <ImageUpload
+                key={uploadKey}
+                onImagesSelect={(files) => handleImagesSelect(files, "upload")}
+                isLoading={batch.loading}
+              />
+            ) : (
+              <CameraScanner
+                onSubmit={(files) => handleImagesSelect(files, "camera")}
+                isLoading={batch.loading}
+              />
+            )}
+
+            {batch.loading && batch.progress && (
+              <div className="mt-4 space-y-2" aria-live="polite">
+                <div className="flex items-center justify-between text-sm text-gray-600">
+                  <span>
+                    Đang xử lý {batch.progress.processed}/{batch.progress.total} ảnh
+                  </span>
+                  <button
+                    type="button"
+                    onClick={batch.cancel}
+                    className="font-medium text-red-600 underline hover:text-red-800"
+                  >
+                    Hủy
+                  </button>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-gray-200">
+                  <div
+                    className="h-full bg-blue-600 transition-all"
+                    style={{
+                      width: `${batch.progress.total ? (batch.progress.processed / batch.progress.total) * 100 : 0}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            )}
 
             {batch.error && (
               <div className="mt-4 rounded-md border border-red-200 bg-red-50 p-3 text-red-700 sm:p-4">
@@ -182,29 +268,7 @@ export default function Home() {
               <h2 className="text-xl font-semibold text-gray-700 sm:text-2xl">
                 Bước 2: Kết quả phân loại
               </h2>
-              <BatchResultPanel
-                items={batch.items}
-                selectedIndex={effectiveIndex}
-                onSelect={(item) => setSelectedIndex(item.originalIndex)}
-              />
-
-              {selectedItem && selectedItem.data && (
-                <div className="space-y-3">
-                  <h2 className="text-xl font-semibold text-gray-700 sm:text-2xl">
-                    Bước 3: Kiểm tra & Xuất file ({selectedItem.filename})
-                  </h2>
-                  <CCCDForm
-                    key={selectedItem.originalIndex}
-                    initialData={selectedItem.data}
-                    confidences={selectedItem.confidences}
-                    onExport={(data) =>
-                      exporter.exportData(data, selectedItem.scanId ?? undefined)
-                    }
-                    isExporting={exporter.loading}
-                    exportError={exporter.error}
-                  />
-                </div>
-              )}
+              <BatchResultPanel items={batch.items} />
 
               <div className="text-center">
                 <button
@@ -212,11 +276,29 @@ export default function Home() {
                   onClick={handleReset}
                   className="text-blue-600 hover:text-blue-800 font-medium underline"
                 >
-                  Tải lên ảnh khác
+                  Quét tiếp ảnh khác
                 </button>
               </div>
             </section>
           )}
+
+          <section className="space-y-3">
+            <h2 className="text-xl font-semibold text-gray-700 sm:text-2xl">
+              Bước 3: Danh sách đã quét &amp; xuất Excel
+            </h2>
+            <CCCDListTable
+              rows={list.rows}
+              onUpdate={list.updateField}
+              onMarkReviewed={list.markReviewed}
+              onMerge={list.mergeRows}
+              onRemove={list.removeRow}
+              onAdd={list.addEmpty}
+              onClear={list.clear}
+              onExport={() => exporter.exportRows(toExportRows(list.rows))}
+              isExporting={exporter.loading}
+              exportError={exporter.error}
+            />
+          </section>
         </div>
       </main>
 

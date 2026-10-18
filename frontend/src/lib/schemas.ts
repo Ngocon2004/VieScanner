@@ -90,6 +90,40 @@ export const batchExtractResponseSchema = z.object({
 
 export type BatchExtractResponse = z.infer<typeof batchExtractResponseSchema>;
 
+// ----- Jobs (xử lý bất đồng bộ) -----
+
+export const JOB_TERMINAL_STATUSES = ["completed", "partial", "failed", "cancelled"] as const;
+
+export const jobItemSchema = z.object({
+  id: z.string(),
+  seq: z.number(),
+  upload_index: z.number(),
+  filename: z.string().nullable(),
+  container_filename: z.string().nullable().optional(),
+  page_number: z.number().nullable().optional(),
+  status: z.string(), // queued | processing | done | rejected | failed | cancelled
+  scan_id: z.string().nullable().optional(),
+  result: batchItemResultSchema.nullable().optional(),
+});
+
+export type JobItem = z.infer<typeof jobItemSchema>;
+
+export const jobSchema = z.object({
+  id: z.string(),
+  source: z.string(),
+  status: z.string(),
+  total_items: z.number(),
+  processed_items: z.number(),
+  succeeded_items: z.number(),
+  failed_items: z.number(),
+  created_at: z.string(),
+  started_at: z.string().nullable().optional(),
+  finished_at: z.string().nullable().optional(),
+  items: z.array(jobItemSchema),
+});
+
+export type Job = z.infer<typeof jobSchema>;
+
 export const errorResponseSchema = z.object({
   code: z.string(),
   message: z.string(),

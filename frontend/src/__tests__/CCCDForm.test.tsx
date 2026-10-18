@@ -68,4 +68,34 @@ describe("CCCDForm", () => {
       expect(screen.getByLabelText("Số CCCD")).toHaveFocus();
     });
   });
+
+  it("requires unread (confidence 0) fields to be reviewed before export", () => {
+    const onExport = vi.fn();
+    render(
+      <CCCDForm
+        initialData={{ ...VALID_DATA, dob: "01/01/2000" }}
+        confidences={{ dob: 0, full_name: 0.95 }}
+        onExport={onExport}
+      />,
+    );
+    const dob = screen.getByLabelText("Ngày sinh");
+    // Ô được auto-focus: rời ô đó không tính là đã kiểm tra.
+    fireEvent.blur(dob);
+    expect(screen.getByRole("button", { name: "Kiểm tra lại thông tin" })).toBeDisabled();
+
+    fireEvent.mouseDown(dob);
+    fireEvent.focus(dob);
+    fireEvent.blur(dob);
+    fireEvent.click(screen.getByRole("button", { name: "Xuất file Excel" }));
+    expect(onExport).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not steal focus when confidences are refreshed by polling", () => {
+    const props = { initialData: VALID_DATA, onExport: vi.fn() };
+    const { rerender } = render(<CCCDForm {...props} confidences={{ id_number: 0.4 }} />);
+    const name = screen.getByLabelText("Họ và tên");
+    name.focus();
+    rerender(<CCCDForm {...props} confidences={{ id_number: 0.4 }} />);
+    expect(name).toHaveFocus();
+  });
 });

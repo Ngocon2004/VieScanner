@@ -7,9 +7,10 @@ import {
   scanListItemSchema,
   scanReadSchema,
   cccdRecordReadSchema,
+  jobSchema,
   type CCCDExtractResponse,
+  type Job,
   type BatchExtractResponse,
-  type CCCDData,
   type ErrorResponse,
   type UserRead,
   type Token,
@@ -19,6 +20,7 @@ import {
   type ScanRead,
   type CCCDRecordRead,
 } from "@/lib/schemas";
+import type { ExportListRow } from "@/lib/cccdList";
 
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000/api";
@@ -70,9 +72,12 @@ async function asAPIError(response: Response): Promise<APIError> {
   });
 }
 
+export const TOKEN_STORAGE_KEY = "vs_token";
+export const AUTH_EXPIRED_EVENT = "vs:auth-expired";
+
 function getAuthHeader(): Record<string, string> {
   if (typeof window === "undefined") return {};
-  const token = localStorage.getItem("vs_token");
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
@@ -80,24 +85,75 @@ const DEFAULT_TIMEOUT_MS = 30_000;
 // OCR (đặc biệt real mode/lần đầu warm-up) hoặc batch nhiều ảnh có thể chậm.
 const EXTRACT_TIMEOUT_MS = 120_000;
 
+/** True nếu lỗi là do request bị hủy (AbortController), không phải lỗi server.
+ *
+ * Lưu ý: fetch bị abort ném `DOMException` (KHÔNG phải `instanceof Error` ở
+ * Node/jsdom) nên kiểm tra theo thuộc tính `name` thay vì `instanceof`. */
+export function isAbortError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "name" in err &&
+    (err as { name?: unknown }).name === "AbortError"
+  );
+}
+
+/**
+ * Gộp nhiều AbortSignal thành 1 (abort khi bất kỳ signal nào abort). Dùng
+ * `AbortSignal.any` nếu môi trường hỗ trợ, fallback bằng listener thủ công.
+ */
+function anySignal(signals: AbortSignal[]): AbortSignal {
+  const ctor = AbortSignal as unknown as {
+    any?: (signals: AbortSignal[]) => AbortSignal;
+  };
+  if (typeof ctor.any === "function") {
+    return ctor.any(signals);
+  }
+  const controller = new AbortController();
+  const onAbort = () => {
+    controller.abort();
+    for (const s of signals) s.removeEventListener("abort", onAbort);
+  };
+  for (const s of signals) {
+    if (s.aborted) {
+      controller.abort();
+      break;
+    }
+    s.addEventListener("abort", onAbort);
+  }
+  return controller.signal;
+}
+
 /**
  * Fetch có timeout bằng AbortController để request không treo vô hạn khi server
- * chậm/không phản hồi. Nếu caller đã truyền `signal` thì tôn trọng signal đó.
+ * chậm/không phản hồi. Nếu caller truyền `signal` (vd hủy khi unmount), signal đó
+ * được **gộp** với signal timeout — vừa hủy được từ caller, vừa vẫn có timeout.
+ *
+ * - Hết thời gian chờ → ném `APIError` code `timeout`.
+ * - Caller chủ động hủy → ném lại AbortError gốc để caller phân biệt và bỏ qua
+ *   (xem `isAbortError`), không hiển thị như lỗi timeout.
  */
 async function fetchWithTimeout(
   url: string,
   options: RequestInit,
   timeoutMs: number,
 ): Promise<Response> {
-  if (options.signal || typeof AbortController === "undefined") {
+  if (typeof AbortController === "undefined") {
     return fetch(url, options);
   }
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  const callerSignal = options.signal ?? undefined;
+  const timeoutController = new AbortController();
+  const timer = setTimeout(() => timeoutController.abort(), timeoutMs);
+  const signal = callerSignal
+    ? anySignal([callerSignal, timeoutController.signal])
+    : timeoutController.signal;
+
   try {
-    return await fetch(url, { ...options, signal: controller.signal });
+    return await fetch(url, { ...options, signal });
   } catch (err) {
-    if (controller.signal.aborted) {
+    // Hết thời gian chờ (caller không chủ động hủy) → lỗi timeout thân thiện.
+    if (timeoutController.signal.aborted && !callerSignal?.aborted) {
       throw new APIError({
         code: "timeout",
         message:
@@ -105,10 +161,34 @@ async function fetchWithTimeout(
         status: 0,
       });
     }
+    // Caller hủy (unmount/điều hướng) → giữ nguyên AbortError để caller bỏ qua.
     throw err;
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * Fetch kèm token. Token hết hạn/không hợp lệ thì xóa token, báo AuthContext và gửi lại
+ * 1 lần không kèm token: nếu không, sau khi token hết hạn mọi chức năng cho phép ẩn danh
+ * (quét, xuất Excel) đều lỗi 401 tới khi người dùng tự đăng xuất.
+ */
+async function authedFetch(url: string, options: RequestInit, timeoutMs: number): Promise<Response> {
+  const auth = getAuthHeader();
+  const send = (extra: Record<string, string>) =>
+    fetchWithTimeout(
+      url,
+      { ...options, headers: { ...extra, ...((options.headers as Record<string, string>) || {}) } },
+      timeoutMs,
+    );
+  const response = await send(auth);
+  if (response.status !== 401 || !auth.Authorization) return response;
+
+  const error = await asAPIError(response.clone());
+  if (error.code !== "auth_token_invalid") return response;
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
+  window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
+  return send({});
 }
 
 async function request<T>(
@@ -122,12 +202,7 @@ async function request<T>(
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
 ): Promise<T> {
   const url = path.startsWith("http") ? path : `${API_BASE_URL}${path}`;
-  const headers = {
-    ...getAuthHeader(),
-    ...((options.headers as Record<string, string>) || {}),
-  };
-
-  const response = await fetchWithTimeout(url, { ...options, headers }, timeoutMs);
+  const response = await authedFetch(url, options, timeoutMs);
 
   if (!response.ok) {
     throw await asAPIError(response);
@@ -162,7 +237,18 @@ export async function extractCCCD(file: File): Promise<CCCDExtractResponse> {
   }, cccdExtractResponseSchema, EXTRACT_TIMEOUT_MS);
 }
 
-export async function extractBatch(files: File[]): Promise<BatchExtractResponse> {
+// Backend OCR tuần tự từng ảnh (real mode ~16 s/ảnh), nên timeout cố định 120 s
+// sẽ cắt ngang batch lớn trong khi server vẫn chạy tiếp.
+const EXTRACT_BATCH_PER_FILE_MS = 30_000;
+
+export function batchTimeoutMs(fileCount: number): number {
+  return Math.max(EXTRACT_TIMEOUT_MS, fileCount * EXTRACT_BATCH_PER_FILE_MS);
+}
+
+export async function extractBatch(
+  files: File[],
+  signal?: AbortSignal,
+): Promise<BatchExtractResponse> {
   const formData = new FormData();
   for (const file of files) {
     formData.append("files", file);
@@ -171,17 +257,46 @@ export async function extractBatch(files: File[]): Promise<BatchExtractResponse>
   return request<BatchExtractResponse>("/extract-batch", {
     method: "POST",
     body: formData,
-  }, batchExtractResponseSchema, EXTRACT_TIMEOUT_MS);
+    signal: signal ?? null,
+  }, batchExtractResponseSchema, batchTimeoutMs(files.length));
 }
 
-export async function exportToExcel(data: CCCDData, scanId?: string): Promise<void> {
-  const response = await fetchWithTimeout(`${API_BASE_URL}/export`, {
+export type JobSource = "upload" | "camera";
+
+// Upload nhiều file/PDF có thể lâu; xử lý OCR chạy nền nên chỉ cần đủ thời gian gửi file.
+const JOB_UPLOAD_TIMEOUT_MS = 180_000;
+
+export async function createJob(
+  files: File[],
+  source: JobSource = "upload",
+  signal?: AbortSignal,
+): Promise<Job> {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("files", file);
+  }
+  formData.append("source", source);
+
+  return request<Job>("/jobs", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...getAuthHeader(),
-    },
-    body: JSON.stringify({ data, scan_id: scanId }),
+    body: formData,
+    signal: signal ?? null,
+  }, jobSchema, JOB_UPLOAD_TIMEOUT_MS);
+}
+
+export async function getJob(jobId: string, signal?: AbortSignal): Promise<Job> {
+  return request<Job>(`/jobs/${encodeURIComponent(jobId)}`, { signal: signal ?? null }, jobSchema);
+}
+
+export async function cancelJob(jobId: string): Promise<Job> {
+  return request<Job>(`/jobs/${encodeURIComponent(jobId)}/cancel`, { method: "POST" }, jobSchema);
+}
+
+export async function exportListToExcel(rows: ExportListRow[]): Promise<void> {
+  const response = await authedFetch(`${API_BASE_URL}/export-list`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ rows }),
   }, DEFAULT_TIMEOUT_MS);
 
   if (!response.ok) {
@@ -189,18 +304,18 @@ export async function exportToExcel(data: CCCDData, scanId?: string): Promise<vo
   }
 
   const disposition = response.headers.get("Content-Disposition") ?? "";
-  const filenameFromHeader = parseFilenameFromDisposition(disposition);
-  const fallbackName = `CCCD_${data.full_name.replace(/\s+/g, "_")}.xlsx`;
+  const filename = parseFilenameFromDisposition(disposition) ?? "DanhSach_CCCD.xlsx";
 
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = filenameFromHeader ?? fallbackName;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
   document.body.removeChild(a);
+  // Thu hồi ngay sau click làm Firefox/Safari hủy tải: đợi trình duyệt nhận file trước.
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 // ----- Auth -----
@@ -227,8 +342,12 @@ export async function getMe(): Promise<UserRead> {
 
 // ----- Scans -----
 
-export async function getScans(limit = 50, offset = 0): Promise<ScanListItem[]> {
-  return request<ScanListItem[]>(`/scans?limit=${limit}&offset=${offset}`, {}, {
+export async function getScans(
+  limit = 50,
+  offset = 0,
+  signal?: AbortSignal,
+): Promise<ScanListItem[]> {
+  return request<ScanListItem[]>(`/scans?limit=${limit}&offset=${offset}`, { signal: signal ?? null }, {
     safeParse: (data) => {
       const parsed = scanListItemSchema.array().safeParse(data);
       return { success: parsed.success, data: parsed.data as ScanListItem[], error: parsed.error };
@@ -236,14 +355,18 @@ export async function getScans(limit = 50, offset = 0): Promise<ScanListItem[]> 
   });
 }
 
-export async function getScan(id: string): Promise<ScanRead> {
-  return request<ScanRead>(`/scans/${id}`, {}, scanReadSchema);
+export async function getScan(id: string, signal?: AbortSignal): Promise<ScanRead> {
+  return request<ScanRead>(`/scans/${id}`, { signal: signal ?? null }, scanReadSchema);
 }
 
 // ----- Records -----
 
-export async function getRecords(limit = 50, offset = 0): Promise<CCCDRecordRead[]> {
-  return request<CCCDRecordRead[]>(`/records?limit=${limit}&offset=${offset}`, {}, {
+export async function getRecords(
+  limit = 50,
+  offset = 0,
+  signal?: AbortSignal,
+): Promise<CCCDRecordRead[]> {
+  return request<CCCDRecordRead[]>(`/records?limit=${limit}&offset=${offset}`, { signal: signal ?? null }, {
     safeParse: (data) => {
       const parsed = cccdRecordReadSchema.array().safeParse(data);
       return { success: parsed.success, data: parsed.data as CCCDRecordRead[], error: parsed.error };
@@ -253,6 +376,28 @@ export async function getRecords(limit = 50, offset = 0): Promise<CCCDRecordRead
 
 export async function deleteRecord(id: string): Promise<void> {
   await request<void>(`/records/${id}`, { method: "DELETE" });
+}
+
+// Cho module API khác (vd. `lib/admin.ts`) dùng chung token, timeout và chuẩn hóa lỗi.
+export function apiRequest<T>(
+  path: string,
+  options: RequestInit,
+  schema: { safeParse: (data: unknown) => { success: boolean; data?: T | undefined; error?: { issues?: unknown } | undefined } },
+): Promise<T> {
+  return request<T>(path, options, schema);
+}
+
+// Engine "mock" trả dữ liệu mẫu cố định, không đọc ảnh: trang quét phải cảnh báo để không ai tin nhầm kết quả.
+export async function getOcrEngine(signal?: AbortSignal): Promise<string | null> {
+  try {
+    const response = await fetch(`${API_BASE_URL.replace(/\/api\/?$/, "")}/health`, { signal: signal ?? null });
+    if (!response.ok) return null;
+    const body: unknown = await response.json();
+    const engine = (body as { ocr_engine?: unknown })?.ocr_engine;
+    return typeof engine === "string" ? engine : null;
+  } catch {
+    return null;
+  }
 }
 
 // ----- Utils -----

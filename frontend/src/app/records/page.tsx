@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { getRecords, deleteRecord, APIError } from "@/lib/api";
+import { getRecords, deleteRecord, APIError, isAbortError } from "@/lib/api";
 import type { CCCDRecordRead } from "@/lib/schemas";
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/app/AuthContext";
@@ -14,15 +14,16 @@ export default function RecordsPage() {
   const [records, setRecords] = useState<CCCDRecordRead[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchRecords = useCallback(async () => {
+  const fetchRecords = useCallback(async (signal?: AbortSignal) => {
     try {
-      const data = await getRecords();
+      const data = await getRecords(50, 0, signal);
       setRecords(data);
     } catch (error) {
+      if (isAbortError(error)) return; // request bị hủy khi unmount → bỏ qua
       const message = error instanceof APIError ? error.message : "Không thể tải danh sách bản ghi";
       toast.error(message);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, []);
 
@@ -33,8 +34,10 @@ export default function RecordsPage() {
     }
 
     if (user) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: state is set after async getRecords() resolves (backlog N4: migrate to SWR)
-      void fetchRecords();
+      const controller = new AbortController();
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: state set sau khi getRecords() resolve; hủy khi unmount (backlog N4: migrate to SWR)
+      void fetchRecords(controller.signal);
+      return () => controller.abort();
     }
   }, [user, authLoading, router, fetchRecords]);
 

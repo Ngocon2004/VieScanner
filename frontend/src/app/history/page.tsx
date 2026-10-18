@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { getScans, APIError } from "@/lib/api";
+import { getScans, APIError, isAbortError } from "@/lib/api";
 import type { ScanListItem } from "@/lib/schemas";
 import Navbar from "@/components/Navbar";
 import { useAuth } from "@/app/AuthContext";
@@ -14,15 +14,16 @@ export default function HistoryPage() {
   const [scans, setScans] = useState<ScanListItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchScans = useCallback(async () => {
+  const fetchScans = useCallback(async (signal?: AbortSignal) => {
     try {
-      const data = await getScans();
+      const data = await getScans(50, 0, signal);
       setScans(data);
     } catch (error) {
+      if (isAbortError(error)) return; // request bị hủy khi unmount → bỏ qua
       const message = error instanceof APIError ? error.message : "Không thể tải lịch sử";
       toast.error(message);
     } finally {
-      setLoading(false);
+      if (!signal?.aborted) setLoading(false);
     }
   }, []);
 
@@ -33,8 +34,10 @@ export default function HistoryPage() {
     }
 
     if (user) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: state is set after async getScans() resolves (backlog N4: migrate to SWR)
-      void fetchScans();
+      const controller = new AbortController();
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch-on-mount: state set sau khi getScans() resolve; hủy khi unmount (backlog N4: migrate to SWR)
+      void fetchScans(controller.signal);
+      return () => controller.abort();
     }
   }, [user, authLoading, router, fetchScans]);
 

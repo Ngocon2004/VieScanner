@@ -1,8 +1,10 @@
 @import "tailwindcss";
 
+/* Giao diện chỉ thiết kế nền sáng: không đổi màu theo dark mode của máy, nếu không chữ trong ô nhập sẽ gần trắng trên nền trắng. */
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  color-scheme: light;
 }
 
 @theme inline {
@@ -10,13 +12,6 @@
   --color-foreground: var(--foreground);
   --font-sans: Arial, Helvetica, sans-serif;
   --font-mono: "Cascadia Mono", Consolas, "Liberation Mono", monospace;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {

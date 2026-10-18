@@ -14,6 +14,7 @@ export default function Navbar() {
     { label: "Trang chủ", href: "/" },
     { label: "Lịch sử", href: "/history" },
     { label: "Bản ghi", href: "/records" },
+    ...(user?.role === "admin" ? [{ label: "Quản trị", href: "/admin" }] : []),
   ];
 
   return (

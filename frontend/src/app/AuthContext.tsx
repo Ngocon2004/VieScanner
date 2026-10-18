@@ -2,7 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getMe } from "@/lib/api";
+import { APIError, AUTH_EXPIRED_EVENT, TOKEN_STORAGE_KEY, getMe } from "@/lib/api";
 import type { UserRead } from "@/lib/schemas";
 
 interface AuthContextType {
@@ -21,7 +21,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   const fetchUser = useCallback(async () => {
-    const token = localStorage.getItem("vs_token");
+    const token = localStorage.getItem(TOKEN_STORAGE_KEY);
     if (!token) {
       return;
     }
@@ -30,9 +30,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const userData = await getMe();
       setUser(userData);
     } catch (error) {
-      console.error("Auth initialization failed:", error);
-      localStorage.removeItem("vs_token");
-      setUser(null);
+      // Chỉ bỏ token khi server khẳng định nó không hợp lệ; mất mạng/backend lỗi tạm thời không được đăng xuất người dùng.
+      if (error instanceof APIError && error.status === 401) {
+        localStorage.removeItem(TOKEN_STORAGE_KEY);
+        setUser(null);
+      }
     }
   }, []);
 
@@ -47,8 +49,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, [fetchUser]);
 
+  useEffect(() => {
+    const onExpired = () => setUser(null);
+    window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
+  }, []);
+
   const loginSuccess = async (token: string) => {
-    localStorage.setItem("vs_token", token);
+    localStorage.setItem(TOKEN_STORAGE_KEY, token);
     setLoading(true);
     try {
       await fetchUser();
@@ -59,7 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = () => {
-    localStorage.removeItem("vs_token");
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
     setUser(null);
     router.push("/login");
   };
