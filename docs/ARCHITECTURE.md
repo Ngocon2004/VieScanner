@@ -22,9 +22,9 @@ VieScanner focuses on one core use case:
     |
     | 3) JSON {data, confidences}
     v
-[Browser Form]
+[Browser list: add / edit / delete rows]
     |
-    | 4) POST /api/export (CCCDData)
+    | 4) POST /api/export-list (rows)
     v
 [Excel Service]
     |

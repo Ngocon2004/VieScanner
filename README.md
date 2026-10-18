@@ -4,7 +4,10 @@ VieScanner is a student project that extracts structured data from Vietnamese CC
 
 ## What It Does
 
-- Upload a CCCD front-side image from desktop or mobile camera.
+- Upload CCCD front-side images (JPG/PNG/WebP/HEIC) or PDF files (one card per page).
+- Scan with the device camera: framing guide, live quality hints, auto-capture.
+- Pre-check image quality and show per-image rejection/warning reasons.
+- Process in the background (job queue) with live progress and cancel.
 - Run OCR pipeline (mock or full real pipeline).
 - Return structured fields with per-field confidence.
 - Let users edit low-confidence fields before export.
@@ -12,11 +15,11 @@ VieScanner is a student project that extracts structured data from Vietnamese CC
 
 ## Demo Flow
 
-1. Upload image in the Next.js UI.
-2. Frontend calls `POST /api/extract`.
-3. Backend OCR pipeline returns `{ data, confidences }`.
-4. User reviews and edits fields.
-5. Frontend calls `POST /api/export` and downloads Excel.
+1. Upload images/PDF or capture with the camera in the Next.js UI (images are resized in a Web Worker).
+2. Frontend pre-checks obvious low-quality images, then calls `POST /api/jobs` and gets a `job_id` immediately.
+3. Frontend polls `GET /api/jobs/{id}`; each item ends with `{ status, quality, data, confidences }`.
+4. Every extracted card is added to one editable list (name, CCCD number, date of birth, gender, permanent residence); front and back of the same card merge by CCCD number. Low-confidence cells are highlighted, and rows that are missing data or contradict their CCCD number block the export.
+5. Frontend calls `POST /api/export-list` and downloads one Excel file with one row per person.
 
 ## Tech Stack
 
@@ -59,7 +62,7 @@ Open `http://localhost:3000`.
 To enable full OCR pipeline (`OCR_ENGINE=real`), follow model/dependency instructions in:
 
 - [backend/README.md](./backend/README.md)
-- [PHASE_2_PLAN.md](./PHASE_2_PLAN.md)
+- [docs/OCR_PIPELINE.md](./docs/OCR_PIPELINE.md)
 
 ## Tests
 
@@ -85,7 +88,7 @@ VieScanner/
 |- frontend/                # Next.js web app
 |- docs/                    # Architecture and OCR docs
 |- PROJECT_ROADMAP.md       # Sprint roadmap and current status
-|- PHASE_2_PLAN.md          # Detailed OCR phase plan
+|- Logic_Project.md         # System flow and project phase diagrams
 `- README.md
 ```
 
@@ -97,6 +100,8 @@ VieScanner/
 - [OCR Pipeline Details](./docs/OCR_PIPELINE.md)
 - [Troubleshooting (No-Hang Checklist)](./README_TROUBLESHOOTING.md)
 - [Roadmap](./PROJECT_ROADMAP.md)
+- [Master Plan (front + back CCCD)](./docs/MASTER_PLAN.md)
+- [Logic Project (diagrams)](./Logic_Project.md)
 
 ## Current Status
 

@@ -1,7 +1,7 @@
 ﻿# VieScanner — Project Roadmap
 
 > **Mục tiêu**: Đồ án sinh viên năm 4 (solo, không deadline).
-> **Tham khảo chi tiết Phase 2**: [PHASE_2_PLAN.md](./PHASE_2_PLAN.md)
+> **Tham khảo chi tiết OCR**: [docs/OCR_PIPELINE.md](./docs/OCR_PIPELINE.md) · **Kế hoạch tiếp theo**: [docs/MASTER_PLAN.md](./docs/MASTER_PLAN.md)
 > **Ký hiệu task**: `✅` = đã hoàn thành, `⏳` = đang chờ hoàn thành.
 
 ---
@@ -23,7 +23,7 @@ VieScanner là **hệ thống OCR CCCD Việt Nam → Excel**. Với scope đồ
 - ❌ B2B bulk API, webhooks
 - ❌ Multi-region deployment, k8s
 
-Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_ROADMAP.md`).
+Phần backend database + JWT cơ bản đã triển khai xong (xem `backend/README.md` mục Database setup).
 
 ---
 
@@ -46,8 +46,8 @@ Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_RO
 | **Sprint DB** | Backend database layer (SQLAlchemy/Alembic/JWT API/history) | ✅ Done |
 | **Sprint FE-Int** | Frontend History & Records UI integration | ✅ Done |
 | **Documentation** | README final, screenshots | ⏳ In progress (còn 2 screenshot phụ; video/slide đã bỏ scope) |
-| **Quality Gate + Batch** | Lọc chất lượng ảnh (cứng/mềm) + xử lý nhiều ảnh + báo lý do ảnh không đạt | ✅ Core done (Session 19) — follow-up: Sprint P |
-| **Backlog Tối ưu** | Đề xuất cải tiến accuracy/perf/UX/security (Sprint L–O) | ⏳ Đang làm — L1 (QR), N5, P5 ✅ Done (Session 20); còn M/N/O |
+| **Quality Gate + Batch** | Lọc chất lượng ảnh (cứng/mềm) + xử lý nhiều ảnh + báo lý do ảnh không đạt | ✅ Done (Core S19; Sprint P follow-up S24) |
+| **Backlog Tối ưu** | Đề xuất cải tiến accuracy/perf/UX/security (Sprint L–O) | ⏳ Đang làm — L1/N5/P5 (S20), M1/M2/M3/L2 (S21), N1 (S22), M4/M5 (S23) ✅ Done; còn L3/L4, M6/M7, N2–N4, O |
 
 \* Cho đồ án chỉ làm subset.
 
@@ -195,7 +195,7 @@ Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_RO
 **Mục tiêu**: Đạt accuracy đủ tốt để demo (>=80% per field, >=60% end-to-end perfect).
 
 **Tasks**:
-- ✅ User chuẩn bị 5-10 ảnh CCCD test (mặt trước, đa dạng góc/sáng) — đã có dataset 63 ảnh thật (`D:\\Nam4\\Web_New\\Data_CCCD_5.26`).
+- ✅ User chuẩn bị 5-10 ảnh CCCD test (mặt trước, đa dạng góc/sáng) — đã có dataset 63 ảnh thật (lưu cục bộ, không đưa lên git).
   - Tip: dùng CCCD của bạn + bạn bè (xin phép), hoặc generate template từ ảnh public
   - **Lưu ý**: KHÔNG commit ảnh CCCD thật vào git (xem .gitignore)
 - ✅ Tạo `backend/tests/fixtures/cccd_samples/` (gitignore)
@@ -371,15 +371,17 @@ Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_RO
 
 ## 🔧 Đề xuất Tối ưu & Cải tiến (Backlog — Session 18)
 
-> Các đề xuất dưới đây được rà soát **trực tiếp từ code** (không chỉ docs). Tất cả đang ở trạng thái ⏳ (chưa làm). Sắp xếp theo nhóm + ROI. Tham chiếu file/dòng để dễ implement sau.
+> Các đề xuất dưới đây được rà soát **trực tiếp từ code** (không chỉ docs). Sắp xếp theo nhóm + ROI. Tham chiếu file/dòng để dễ implement sau.
+>
+> **Tiến độ**: TOP 5 ROI cao đã xong hết — L1 (S20), M1/M2/M3/L2 (S21), N1 (S22), M4/M5 (S23). Còn lại: L3/L4, M6/M7, N2–N4, O1–O6.
 
 ### 🎯 TOP 5 ưu tiên (ROI cao)
 
 1. ✅ **Đọc QR code mặt trước CCCD** (L1) — accuracy gần như tuyệt đối trên CCCD gắn chip; "ăn điểm" khi present. **Done (Session 20)**.
-2. ⏳ **Semaphore giới hạn OCR đồng thời + warm-up models** (M1, M2) — hết crash khi nhiều request & hết chậm request đầu.
-3. ⏳ **AbortController/timeout cho fetch FE** (N1) — `README_TROUBLESHOOTING` nói đã có nhưng code chưa.
-4. ⏳ **Batch recognition VietOCR** (L2) — giảm latency stage chậm nhất.
-5. ⏳ **Ghi `scans` ở background + retention** (M4, M5) — gọn response & DB không phình.
+2. ✅ **Semaphore giới hạn OCR đồng thời + warm-up models** (M1, M2) — hết crash khi nhiều request & hết chậm request đầu. **Done (Session 21)**.
+3. ✅ **AbortController/timeout cho fetch FE** (N1) — **Done (Session 22)**: timeout đã có sẵn (S19); bổ sung hủy request từ caller (signal gộp với timeout) cho History/Records để không treo UI.
+4. ✅ **Batch recognition VietOCR** (L2) — giảm latency stage chậm nhất. **Done (Session 21)**.
+5. ✅ **Ghi `scans` ở background + retention** (M4, M5) — gọn response & DB không phình. **Done (Session 23)**.
 
 ---
 
@@ -388,7 +390,7 @@ Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_RO
 **Mục tiêu**: Tăng accuracy end-to-end, đặc biệt với CCCD gắn chip đời mới.
 
 - ✅ **L1. QR code reader** (Session 20): `app/services/ocr/qr.py` decode QR mặt trước bằng `cv2.QRCodeDetector` (không thêm dependency). QR ghi đè 5 trường (`id_number, full_name, dob, gender, residence`) với confidence 1.0; OCR vẫn lo `nationality/origin/expiry` + làm fallback khi không có/đọc lỗi QR; thêm fallback **QR-only** khi OCR fail. Bật/tắt qua `OCR_QR_ENABLED`. Test `tests/test_qr.py` (17 case) → backend `pytest -q` **54 passed**; verify decode cv2 thật end-to-end OK.
-- ⏳ **L2. Batch VietOCR**: `app/services/ocr/stages/recognizer.py` (L143-166) đang `predict()` **từng box** trong vòng lặp → đổi sang `predict_batch()` để giảm latency (10-20 box + beamsearch).
+- ✅ **L2. Batch VietOCR** (Session 21): `recognizer.py` tách `recognize()` thành `_crop_boxes` + `_recognize_batch` (gọi `predict_batch` 1 lần) + `_recognize_each` (per-box fallback). Bật/tắt qua `OCR_RECOGNIZER_BATCH` (default on). Lưu ý: `predict_batch` của VietOCR luôn greedy (bỏ beamsearch) nhưng **trả confidence thật** mỗi dòng (helper `_safe_prob`) — tốt hơn per-box+beamsearch (prob=None→0.0). Lỗi `predict_batch` → tự fallback per-box. Test `tests/test_recognizer_batch.py` (11 case, predictor giả).
 - ⏳ **L3. LLM/VLM fallback extractor**: khi `RealFieldExtractor` để field trống (confidence=0) → gọi LLM/VLM cứu ca khó.
 - ⏳ **L4. Mặt sau CCCD** (gộp Sprint K): ngày cấp, nơi cấp, đặc điểm nhận dạng.
 
@@ -400,11 +402,11 @@ Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_RO
 
 **Mục tiêu**: Chạy ổn định khi nhiều request + giảm latency cảm nhận.
 
-- ⏳ **M1. Semaphore OCR**: engine là singleton (`lru_cache maxsize=1`), model dùng chung; `asyncio.to_thread` cho chạy song song trên **cùng instance** YOLO/Paddle/VietOCR (không thread-safe) → nguy cơ crash/OOM GPU 4GB. Thêm `asyncio.Semaphore` (env `OCR_MAX_CONCURRENCY`).
-- ⏳ **M2. Warm-up lúc startup**: warm engine trong `lifespan` (main.py) khi `OCR_ENGINE=real`; hiện `lifespan` chỉ `ping_database()` (main.py L30-31) → request đầu rất chậm.
-- ⏳ **M3. `/health` trả `ocr_engine_ready`** (PHASE_2_PLAN 2.6.3); hiện chỉ trả `status+version` (main.py L68-70).
-- ⏳ **M4. Ghi `scans` qua `BackgroundTasks`**: bỏ `await db.commit()` khỏi luồng response (ocr_controller.py L88-104, L208).
-- ⏳ **M5. Retention `scans`**: job xóa scan cũ > N ngày — bảng phình mỗi request (kể cả cache hit ghi row `:cache`).
+- ✅ **M1. Semaphore OCR** (Session 21): thêm `asyncio.Semaphore` (env `OCR_MAX_CONCURRENCY`, default 1) trong `ocr_engine.py` (`_get_ocr_semaphore` khóa theo event loop để an toàn với test) bọc `_PipelineEngine.extract` → giới hạn số OCR chạy song song trên model dùng chung (không thread-safe). Test: 2 case kiểm tra serialize ở limit=1 và song song ở limit=2.
+- ✅ **M2. Warm-up lúc startup** (Session 21): `lifespan` (main.py) gọi `warmup_ocr_engine()` (env `OCR_WARMUP_ON_STARTUP`, default on) — build engine trong thread để nạp YOLO/Paddle/VietOCR trước, best-effort (lỗi không chặn startup). Hết cảnh "request đầu rất chậm".
+- ✅ **M3. `/health` trả `ocr_engine_ready`** (Session 21): bổ sung `ocr_engine` + `ocr_engine_ready` vào `/health` (giữ `status`/`version` cũ). Test `test_health_reports_ocr_engine_fields`.
+- ✅ **M4. Ghi `scans` qua `BackgroundTasks`** (Session 23): đường **success** (`/extract` cache-hit + fresh, mỗi item `/extract-batch`) pre-generate `scan_id` (UUID) trả ngay rồi ghi DB ở background (`_schedule_scan` → `_persist_scan_bg` mở session riêng `SessionLocal`) → bỏ `db.commit()` khỏi luồng response. Đường **lỗi** giữ `_log_scan` đồng bộ (raise nên BackgroundTasks không chạy). `create_scan` thêm tham số `id`. Lưu ý: race export↔ghi-nền là sub-giây và `/export` đã degrade an toàn (try/except).
+- ✅ **M5. Retention `scans`** (Session 23): `ScanRepository.delete_older_than(cutoff)` (xóa corrections con + gỡ `cccd_records.scan_id`→NULL để an toàn cả khi SQLite tắt FK) + `app/services/retention.py` (`purge_old_scans_once` + `retention_loop`) chạy lúc startup & lặp theo `SCAN_RETENTION_INTERVAL_HOURS`; bật bằng `SCAN_RETENTION_DAYS>0` (mặc định 0 = tắt, không xóa dữ liệu ngoài ý muốn). Task hủy gọn lúc shutdown.
 - ⏳ **M6. In-memory LRU trước DB cache**: cache hiện luôn round-trip DB (scan_repository.py L74-96).
 - ⏳ **M7. Pool config Postgres** cho prod: `pool_size/max_overflow/pool_recycle` (session.py L16-22 mới chỉ có `pool_pre_ping`).
 
@@ -416,7 +418,7 @@ Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_RO
 
 **Mục tiêu**: Không treo UI, duyệt lịch sử/bản ghi mượt hơn.
 
-- ⏳ **N1. AbortController + timeout** cho `request()` trong `frontend/src/lib/api.ts` (L88 `fetch` chưa có `signal`/timeout).
+- ✅ **N1. AbortController + timeout** cho `request()` trong `frontend/src/lib/api.ts` (Session 22). Timeout đã có từ S19 (`fetchWithTimeout`, default 30s / 120s cho extract). Session 22 bổ sung **hủy từ caller**: gộp caller `signal` với signal timeout (helper `anySignal`, dùng `AbortSignal.any` + fallback), phân biệt caller-abort vs timeout (`isAbortError`), luồng `signal` qua `getScans/getScan/getRecords`, và History/Records pages tự `abort()` khi unmount (không treo UI / không set-state sau unmount). Test: 2 case mới trong `api.test.ts` (timeout → code `timeout`; caller-abort → `isAbortError`).
 - ⏳ **N2. Nén ảnh trong Web Worker / OffscreenCanvas**: `prepareImageForUpload` chạy Canvas trên main thread → giật UI với ảnh lớn.
 - ⏳ **N3. Pagination + search** cho History/Records (BE đã hỗ trợ `limit/offset`, FE mới load 50 dòng).
 - ⏳ **N4. SWR/React Query** cache cho History/Records (đỡ fetch lại mỗi lần vào trang).
@@ -445,25 +447,24 @@ Phần backend database + JWT cơ bản đã triển khai xong (xem `DATABASE_RO
 
 ### **Sprint P — Hoàn thiện Quality Gate + Batch (follow-up Session 19)**
 
-**Bối cảnh**: Core đã xong & verify (backend 37 pass, FE 12 pass, build OK). Các việc dưới đây là phần còn lại để hoàn thiện trọn vẹn — làm tiếp ở phiên sau.
+**Status**: ✅ Done (Session 24)
 
-- ⏳ **P1. Cập nhật E2E Playwright cho luồng batch**: `e2e/ocr-export.spec.ts` + `e2e/helpers.ts` đang viết theo luồng 1 ảnh cũ. Cần:
-  - `uploadMockImage` → hỗ trợ chọn nhiều file (input giờ có `multiple`).
-  - Chờ `BatchResultPanel` (heading "Bước 2: Kết quả phân loại") thay vì form xuất hiện ngay.
-  - Chọn 1 ảnh đạt → `CCCDForm` (auto-select ảnh đạt đầu tiên) → export.
-  - Rà lại `docs-capture.spec.ts` (screenshot) cho UI mới.
-- ⏳ **P2. Chạy thử `OCR_ENGINE=real` + tinh chỉnh ngưỡng `QUALITY_*`** với ảnh CCCD thật (dataset `Data_CCCD_5.26`):
-  - Kiểm tra false-positive/negative của `blur_var_hard/soft`, `dark/bright`, `glare`, và card-presence (YOLO).
-  - Chốt default phù hợp trong `app/core/config.py` (+ cập nhật `.env.example`, `docs/OCR_PIPELINE.md`).
-- ⏳ **P3. Bổ sung test còn thiếu**:
-  - BE: quality gate ở real mode / card-presence (hiện mới test OpenCV metrics + batch mock).
-  - FE: unit test cho `lib/quality.ts` (precheck) và `useBatchExtract` (gộp client-reject + server-result, race).
-- ⏳ **P4. Tài liệu**: thêm mục `POST /api/extract-batch` + bảng tiêu chí chất lượng vào `backend/README.md` & `frontend/README.md` (API contract mới: response `{ data, confidences, quality }`).
+**Bối cảnh**: Core đã xong ở Session 19; Session 24 đã hoàn thiện phần follow-up để chốt luồng batch, quality gate real-mode, test và tài liệu.
+
+- ✅ **P1. Cập nhật E2E Playwright cho luồng batch** (Session 24): `helpers.ts` hỗ trợ upload nhiều ảnh, chờ `BatchResultPanel`/Bước 3, export đúng nút submit; `ocr-export.spec.ts` theo dõi `/extract-batch`; `docs-capture.spec.ts` chụp thêm batch results. Harden runner bằng `scripts/run-e2e.mjs` để tự start/kill backend+frontend trên port riêng `18000/13000` (hết timeout teardown).
+- ✅ **P2. Chạy thử `OCR_ENGINE=real` + tinh chỉnh ngưỡng `QUALITY_*`** với ảnh CCCD thật (Session 24):
+  - Dataset nội bộ (63 ảnh thật, không commit): quality gate real-mode accepted **57/63**, hard reject `not_cccd=5`, `blur=1`; soft warnings `card_partial=26`, `blur=4`, `too_dark=3`, `low_resolution=4`.
+  - Sửa `RealCardAligner.count_corners()` dùng cùng retry thresholds với aligner thật (`0.25 -> 0.15 -> 0.10 -> 0.05`) để giảm false reject card-presence (hard reject giảm từ 12 xuống 6 trên dataset smoke).
+  - Real OCR smoke 1 ảnh OK: build ~56s, run ~16s, 20 boxes/lines, 8 confidence fields.
+- ✅ **P3. Bổ sung test còn thiếu** (Session 24):
+  - BE: card-presence `not_cccd`/`card_partial`, controller real-mode wiring, aligner retry trong `count_corners`.
+  - FE: `lib/quality.ts`, `useBatchExtract` client-reject/server-result + race, API client parse `/extract-batch`.
+- ✅ **P4. Tài liệu** (Session 24): cập nhật root/backend/frontend README cho `/extract-batch`, response `{ data, scan_id, confidences, quality }`, quality criteria; cập nhật `docs/OCR_PIPELINE.md` với quality defaults + smoke results.
 - ✅ **P5. (Liên quan, không bắt buộc)** Sửa lint react-hooks **có sẵn** ở 3 file (đã commit ở Session 20, không thuộc tính năng này): `src/app/AuthContext.tsx` (`set-state-in-effect`), `src/app/history/page.tsx` & `src/app/records/page.tsx` (`accessed before declared` → bọc `useCallback`/khai báo trước effect) + dọn unused vars. Trùng mục N5. **✅ Done ở Session 20**: lint sạch; các điểm `set-state-in-effect` còn lại được suppress có giải trình (fetch-on-mount), fix triệt để khi làm N4 (SWR).
 
-**Definition of Done**: `npm run test:e2e` xanh với luồng batch; ngưỡng `QUALITY_*` chốt theo ảnh thật; test BE/FE bổ sung pass; README mô tả endpoint batch.
+**Definition of Done**: ✅ Đạt — `npm run test:e2e` xanh với luồng batch; ngưỡng `QUALITY_*` đã smoke với ảnh thật; test BE/FE bổ sung pass; README mô tả endpoint batch.
 
-**Estimate**: 4-6h
+**Actual**: hoàn tất trong Session 24.
 
 ---
 
@@ -517,7 +518,7 @@ Các quyết định bạn cần làm khi đến từng Sprint:
 
 **Khi quay lại:**
 1. Đọc lại file này (`PROJECT_ROADMAP.md`) → biết đang ở đâu
-2. Đọc [PHASE_2_PLAN.md](./PHASE_2_PLAN.md) nếu vào sub-phase 2.x
+2. Đọc [docs/OCR_PIPELINE.md](./docs/OCR_PIPELINE.md) nếu làm phần OCR
 3. `cd backend && venv\Scripts\activate.bat && uvicorn main:app --reload` để khởi động dev
 4. `cd frontend && npm run dev` cho FE
 5. Update status table ở mục "📊 Trạng thái hiện tại" mỗi khi xong 1 phase
@@ -544,7 +545,38 @@ Các quyết định bạn cần làm khi đến từng Sprint:
 
 ---
 
-**Last updated**: Session 20 (commit work tồn đọng + sửa lint P5 + đọc QR mặt trước CCCD L1).
+**Last updated**: Session 24 — Sprint P (Quality Gate + Batch follow-up).
+- **P1 (E2E batch)**: `uploadMockImages` hỗ trợ input `multiple`, chờ Bước 2/Bước 3, export đúng button `Xuất file Excel`; `ocr-export.spec.ts` assert `/extract-batch`; `docs-capture.spec.ts` chụp thêm `batch-results.png`. `npm run test:e2e` được harden bằng `frontend/scripts/run-e2e.mjs` (start/kill backend+frontend trên port riêng `18000/13000`) -> **5 passed**, không còn timeout teardown.
+- **P2 (quality real smoke)**: chạy quality gate real-mode trên 63 ảnh thật (dataset nội bộ, không commit): accepted **57/63**, hard reject `not_cccd=5`, `blur=1`; soft `card_partial=26`, `blur=4`, `too_dark=3`, `low_resolution=4`. Sửa `RealCardAligner.count_corners()` dùng retry thresholds như aligner thật, giảm hard reject smoke từ 12 xuống 6. Real OCR smoke 1 ảnh OK (build ~56s, run ~16s, 20 boxes/lines, 8 confidence fields).
+- **P3/P4 (tests/docs)**: BE thêm test card-presence + real-mode wiring + aligner retry; FE thêm test `quality.ts`, `useBatchExtract`, `/extract-batch` API parsing. Docs cập nhật root/backend/frontend README + `docs/OCR_PIPELINE.md`. Verify: backend `pytest -q` -> **79 passed**; frontend `npm test` -> **21 passed**; `npm run lint` sạch; `npm run test:e2e` -> **5 passed**.
+- Lưu ý: E2E vẫn log warning SQLite readonly ở persistence metadata nhưng response/export degrade an toàn và test pass; xử lý gọn bằng DB fixture/migration riêng có thể đưa vào hardening sau nếu muốn log sạch.
+
+**Session 23**: M4 + M5 (ghi scan ở background + retention).
+- **M4 (BackgroundTasks)**: đường success của `/extract` (cache-hit + fresh) và mỗi item `/extract-batch` nay pre-generate `scan_id` (UUID, trả ngay) rồi ghi `scans` ở background → bỏ `await db.commit()` khỏi luồng response. Thêm `_schedule_scan` + `_persist_scan_bg` (mở `SessionLocal` riêng vì session request đã đóng sau response) trong `ocr_controller.py`; `ScanRepository.create_scan` thêm tham số `id`. Đường lỗi giữ `_log_scan` đồng bộ (FastAPI BackgroundTasks không chạy khi request `raise`).
+- **M5 (Retention)**: `ScanRepository.delete_older_than(cutoff)` xóa scan cũ + dọn `corrections` con + gỡ `cccd_records.scan_id`→NULL (an toàn cả khi SQLite không bật FK). `app/services/retention.py` (`purge_old_scans_once` + `retention_loop`) wire vào `lifespan`: chạy lúc startup + lặp mỗi `SCAN_RETENTION_INTERVAL_HOURS`, cancel gọn lúc shutdown. Bật bằng `SCAN_RETENTION_DAYS>0` (mặc định **0 = tắt**, tránh xóa dữ liệu ngoài ý muốn).
+- Config mới: `SCAN_RETENTION_DAYS`, `SCAN_RETENTION_INTERVAL_HOURS` (config.py + `.env.example`).
+- Test mới: `tests/test_scan_logging.py` (2: `_schedule_scan` wiring + purge-disabled) + `test_scans_repo.py` +2 (`create_scan(id=…)`, `delete_older_than` cascade). Verify: backend `pytest -q` → **75 passed** (71 → 75).
+- Docs: `backend/README.md` (Scan history section), `DATABASE_ROADMAP.md` (retention done), `PROJECT_ROADMAP.md`.
+- ⏭️ **Lần sau làm tiếp** (theo ROI): **N2** (nén ảnh trong Web Worker/OffscreenCanvas — hết giật UI ảnh lớn) → **N3/N4** (pagination + SWR cho History/Records) → **M6/M7** (LRU cache + pool Postgres). Tồn đọng: push các commit Session 20–23 lên remote.
+
+**Session 22**: N1 (FE: hủy request + timeout cho fetch).
+- **Bối cảnh / đính chính**: rà code thực tế cho thấy phần **timeout của N1 đã xong từ Session 19** (`fetchWithTimeout` + `request()` đã dùng) — mô tả cũ trong roadmap ("L88 fetch chưa có signal/timeout") là **lỗi thời**. Phần còn thiếu thực sự = **hủy request từ caller** để không treo UI / không set-state sau unmount.
+- `frontend/src/lib/api.ts`: `fetchWithTimeout` nay **gộp** caller `signal` với signal timeout (trước đây nếu có caller signal thì tắt timeout) qua helper `anySignal` (`AbortSignal.any` + fallback listener); phân biệt **caller-abort** (ném lại AbortError) vs **timeout** (ném `APIError` code `timeout`); thêm export `isAbortError`. Luồng optional `signal` qua `getScans` / `getScan` / `getRecords` (TS `exactOptionalPropertyTypes` → dùng `signal ?? null`).
+- `app/history/page.tsx` + `app/records/page.tsx`: tạo `AbortController` trong effect, truyền `signal`, `return () => controller.abort()` khi unmount; bỏ qua `toast`/`setState` khi `isAbortError`/`signal.aborted`.
+- Test: `src/__tests__/api.test.ts` +2 case (timeout → `code: "timeout"`; caller-abort → `isAbortError`, không phải timeout). Verify FE: `npm test` → **14 passed** (12 → 14), `npm run lint` **sạch**, `npm run build` **OK**.
+- ⏭️ **Lần sau làm tiếp** (theo ROI): **M4 + M5** (ghi `scans` qua `BackgroundTasks` + retention) → **N2** (nén ảnh trong Web Worker/OffscreenCanvas). Tồn đọng: push các commit Session 20–22 lên remote.
+
+**Session 21**: backend stability & perf theo ROI — M1 + M2 + M3 + L2.
+- **M1 (Semaphore OCR)**: `app/services/ocr_engine.py` thêm `_get_ocr_semaphore()` (tạo `asyncio.Semaphore` theo `OCR_MAX_CONCURRENCY`, khóa theo event loop để không vỡ giữa các test loop) + bọc `_PipelineEngine.extract` bằng `async with`. Default 1 vì YOLO/Paddle/VietOCR là singleton dùng chung, không thread-safe (tránh crash/OOM GPU 4GB).
+- **M2 (Warm-up)**: `main.py` `lifespan` gọi `warmup_ocr_engine()` (build engine trong `asyncio.to_thread`) khi `OCR_WARMUP_ON_STARTUP=true` → nạp model trước, request đầu hết chậm. Best-effort: lỗi chỉ log cảnh báo, không chặn startup.
+- **M3 (/health)**: thêm `ocr_engine` + `ocr_engine_ready` (giữ `status`/`version`). Readiness do warm-up set.
+- **L2 (Batch VietOCR)**: `recognizer.py` dùng `predict_batch` (1 lần cho cả batch) khi `OCR_RECOGNIZER_BATCH=true` (default), fallback per-box khi `predict_batch` lỗi/1 box. `predict_batch` greedy (bỏ beamsearch) nhưng trả confidence thật mỗi dòng (`_safe_prob`).
+- Config mới: `OCR_MAX_CONCURRENCY`, `OCR_WARMUP_ON_STARTUP`, `OCR_RECOGNIZER_BATCH` (config.py + `.env.example`).
+- Test mới: `tests/test_ocr_engine.py` (6: semaphore×3, warm-up×2, health×1) + `tests/test_recognizer_batch.py` (11). Verify: backend `pytest -q` → **71 passed** (54 → 71). Không có ruff/flake8 cấu hình ở backend nên không chạy linter.
+- Docs: `backend/README.md` (health output + tuning vars stability/perf) + `docs/OCR_PIPELINE.md` (Recognizer batch + mục "Runtime & Stability").
+- ⏭️ **Lần sau làm tiếp** (theo ROI): **N1** (AbortController/timeout cho `request()` chung ở `frontend/src/lib/api.ts`) → **M4 + M5** (ghi `scans` qua `BackgroundTasks` + retention). Việc tồn đọng: push các commit Session 20–21 lên remote.
+
+**Session 20**: commit work tồn đọng + sửa lint P5 + đọc QR mặt trước CCCD L1.
 - Git: gom toàn bộ thay đổi chưa commit thành **9 commit logic** (conventional commits) theo nhóm tính năng:
   - `chore(repo)`: ignore artifact local (e2e db, tuning json).
   - `feat(backend)` + `test(backend)`: Quality Gate + `/api/extract-batch` + OCR result cache + test.
@@ -631,7 +663,7 @@ Các quyết định bạn cần làm khi đến từng Sprint:
 
 **Session 12**: Roadmap sync sau benchmark ảnh thật.
 - Đồng bộ roadmap: Phase 2.7 chuyển sang trạng thái "đã benchmark ảnh thật, chờ ground-truth để chốt accuracy".
-- Chạy benchmark trên dataset thật 63 ảnh (`D:\\Nam4\\Web_New\\Data_CCCD_5.26`): baseline `32/63` OK (50.8%), lỗi chủ yếu `ocr_aligner_failed`.
+- Chạy benchmark trên dataset thật 63 ảnh (dataset nội bộ, không commit): baseline `32/63` OK (50.8%), lỗi chủ yếu `ocr_aligner_failed`.
 - Tuning aligner thực tế:
   - `aligner_conf=0.10`: `38/63` OK (60.3%).
   - Aligner retry (mặc định `0.25 -> 0.15 -> 0.10 -> 0.05`): `39/63` OK (61.9%).

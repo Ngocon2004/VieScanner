@@ -23,13 +23,21 @@ Tai lieu nay gom cac loi "treo/cham/khong phan hoi" thuong gap va cach xu ly dut
 - Nut dang xu ly quay mai, khong thay loi.
 
 ### Nguyen nhan
-- Frontend `fetch` chua co timeout.
 - Backend OCR real co the warm-up model o lan dau.
 
 ### Cach xu ly
-- Them timeout bang `AbortController` (VD 30-60s) cho `/extract`.
+- Frontend da co timeout bang `AbortController` (`fetchWithTimeout` trong
+  `src/lib/api.ts`): mac dinh 30s, `/extract` 120s, `/extract-batch` la
+  max(120s, 30s x so anh). Het thoi gian cho -> bao loi `timeout` thay vi quay mai.
+- Upload lai / bam "Tai len anh khac" / roi trang -> request batch cu bi huy
+  phia FE (backend van OCR not batch da nhan vi dang xu ly dong bo).
+- Chay qua Docker/nginx: `proxy_read_timeout 600s`, `client_max_body_size 110m`
+  (`docker/nginx/default.conf`); neu sua timeout FE thi sua ca nginx.
+- Cac request GET (lich su/ban ghi) tu huy khi roi trang (caller `signal` duoc
+  gop voi signal timeout) -> khong treo UI, khong set state sau unmount.
 - Neu demo nhanh: dung `OCR_ENGINE=mock`.
-- Neu can real OCR: chay warm-up truoc de tai model xong roi moi test UI.
+- Neu can real OCR: bat `OCR_WARMUP_ON_STARTUP=true` (mac dinh) de tai model
+  truoc khi nhan request.
 
 ## 3) Real OCR rat cham o request dau tien
 
@@ -40,8 +48,10 @@ Tai lieu nay gom cac loi "treo/cham/khong phan hoi" thuong gap va cach xu ly dut
 - PaddleOCR/VietOCR tai model lan dau.
 
 ### Cach xu ly
-- Khoi dong backend truoc, goi 1 request warm-up.
-- Dam bao may co mang o lan chay dau.
+- Backend tu warm-up model luc startup khi `OCR_WARMUP_ON_STARTUP=true`
+  (mac dinh) -> request dau khong con cham. Kiem tra `GET /health` ->
+  `ocr_engine_ready: true` la da san sang.
+- Dam bao may co mang o lan chay dau (de tai weights).
 - Neu khong can real OCR, giu `OCR_ENGINE=mock`.
 
 ## 4) OCR out-of-memory hoac latency cao voi anh lon
@@ -63,7 +73,12 @@ Tai lieu nay gom cac loi "treo/cham/khong phan hoi" thuong gap va cach xu ly dut
 - Upload lai anh cu ma ket qua tra ve "nhanh bat thuong", nghi ngo da dung cache.
 
 ### Nguyen nhan
-- OCR result cache dang bat.
+- OCR result cache dang bat. Cache ap dung cho ca `/extract` va `/extract-batch`,
+  tach theo `OCR_ENGINE` va phien ban pipeline (vd `real@1a2b3c4d`): phien ban la hash
+  ma nguon `app/services/ocr/` + cac cau hinh `OCR_*` anh huong ket qua, nen sua logic OCR
+  hoac doi model/nguong thi ket qua cu tu bi bo qua.
+- TTL tinh tu lan OCR that; lan trung cache khong gia han them.
+- Trong 1 batch, anh trung nhau (cung hash) chi OCR 1 lan.
 
 ### Cach xu ly
 - Tat cache khi debug:
@@ -89,14 +104,22 @@ NEXT_PUBLIC_MIN_COMPRESS_BYTES=614400
 NEXT_PUBLIC_UPLOAD_JPEG_QUALITY=0.9
 ```
 
-## 7) Checklist xac nhan sau khi sua
+## 7) Camera khong mo / Job dung o "Dang cho"
+
+- Camera chi chay tren HTTPS hoac `localhost`. Test tren dien thoai qua LAN can
+  HTTPS (mkcert/tunnel); khong co camera thi dung tab "Tai file".
+- Job khong chay: kiem tra `GET /health` -> `job_queue_size`; DB da migrate chua
+  (`alembic -c app/db/alembic.ini upgrade head`, can bang `jobs`, `job_items`).
+- Item bao `file_expired`: anh tam bi xoa vi qua `JOB_TTL_MINUTES` truoc khi den luot.
+
+## 8) Checklist xac nhan sau khi sua
 
 1. Chon anh 3-5MB, loading hien ngay (khong dung im).
 2. OCR mock tra ket qua trong vai giay.
 3. OCR real: request dau co the cham, request sau on dinh hon.
 4. Khong con request doi vo han (da co timeout frontend).
 
-## 8) Khi nao can xem log backend
+## 9) Khi nao can xem log backend
 
 - Treo dai hon 60s.
 - OCR that bai lap lai voi cung 1 anh.
